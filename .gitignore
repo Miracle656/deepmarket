@@ -1,0 +1,8 @@
+node_modules/
+target/
+.env
+.env.*
+*.pem
+*.key
+owned_objects.json
+tx_history.json
