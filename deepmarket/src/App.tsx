@@ -66,12 +66,9 @@ function AppInner() {
           onClick={() => navigate('/')}
         >
           <div style={{
-            width: 36, height: 36, borderRadius: 8,
-            background: '#fff',
-            padding: 3,
+            width: 36, height: 36,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             flexShrink: 0,
-            boxShadow: '0 0 0 1px rgba(28,111,255,0.18)',
           }}>
             <img src={deepMarketLogo} alt="DeepMarket" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
           </div>

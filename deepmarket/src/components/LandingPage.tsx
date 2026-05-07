@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
+import { AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { ConnectButton } from '@mysten/dapp-kit';
@@ -9,15 +10,17 @@ import { useMarkets } from '../lib/useMarkets';
 import { formatVol } from '../App';
 import { rippleThemeToggle } from '../lib/themeToggle';
 import deepMarketLogo from '../assets/deepmarket.png';
+import HeroCandles3D from './HeroCandles3D';
+import MarqueeRow from './MarqueeRow';
+import HowItWorksHorizontal from './HowItWorksHorizontal';
+import MagneticButton from './MagneticButton';
 
 // DeepBook brand assets
 import assetInfinity  from '../assets/deepbookdes/Frame 2147260714.png';
 import assetCross     from '../assets/deepbookdes/Frame 2147260716.png';
-import assetDB        from '../assets/deepbookdes/Frame 2147260717.png';
 import assetCoin      from '../assets/deepbookdes/Frame 2147260718.png';
 import assetCube      from '../assets/deepbookdes/Frame 2147260719.png';
 import assetStack     from '../assets/deepbookdes/Frame 2147260729.png';
-import assetSignal    from '../assets/deepbookdes/Frame 2147260730.png';
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -56,21 +59,29 @@ const FEATURES = [
     },
 ];
 
-// ── Steps data ──
-const STEPS = [
-    { n: '01', img: assetSignal, label: 'Create', desc: 'Deploy a market question. Token contracts are compiled & published to Sui in 3 transactions.' },
-    { n: '02', img: assetCross,  label: 'Trade',  desc: "Buy YES or NO tokens on the DeepBook order book. Price discovers the market's probability." },
-    { n: '03', img: assetCoin,   label: 'Resolve', desc: 'When the event settles, an oracle or admin resolves the outcome on-chain.' },
-    { n: '04', img: assetStack,  label: 'Redeem',  desc: 'Winners burn tokens and claim proportional SUI from the vault.' },
-];
+// ── Candle showcase metadata (one entry per candle, indices 0..8) ──
+const CANDLE_META = [
+    { tag: 'YES',  title: 'Decentralized Order Book',     desc: 'Real CLOB matching on Sui — no AMM curves, no slippage tricks.' },
+    { tag: 'NO',   title: 'Outcome Tokens',               desc: 'Every market mints YES + NO tokens, backed 1:1 by SUI collateral.' },
+    { tag: 'YES',  title: 'Permissionless Markets',       desc: 'Anyone can deploy a question. Token contracts compiled per market.' },
+    { tag: 'NO',   title: 'Trade Both Sides',             desc: 'Long the consensus or fade it. Real bid/ask on both outcomes.' },
+    { tag: 'YES',  title: 'On-Chain Resolution',          desc: 'Outcomes settled on-chain by oracle or admin. Verifiable, final.' },
+    { tag: 'NO',   title: 'No Custodian',                 desc: 'Vault holds SUI. Winners burn tokens to redeem proportional payout.' },
+    { tag: 'YES',  title: 'DeepBook V3 Composability',    desc: 'Built on the same primitives that power Sui DEX trading.' },
+    { tag: 'NO',   title: 'Auditable End-to-End',         desc: 'Every order, position, and settlement is on-chain forever.' },
+    { tag: 'YES',  title: 'Live On Sui Testnet',          desc: 'Real network, real transactions. Mainnet next.' },
+] as const;
 
 export default function LandingPage() {
     const navigate = useNavigate();
     const { markets } = useMarkets();
 
-    const heroRef     = useRef<HTMLDivElement>(null);
-    const visualRef   = useRef<HTMLImageElement>(null);
+    const heroRef     = useRef<HTMLElement>(null);
+    const visualRef   = useRef<HTMLDivElement>(null);
     const statsRef    = useRef<HTMLDivElement>(null);
+
+    const [activeCandle, setActiveCandle] = useState<number | null>(null);
+    const handleActiveCandle = useCallback((idx: number | null) => setActiveCandle(idx), []);
 
     const [theme, setTheme] = useState<'dark' | 'light'>(
         () => (localStorage.getItem('dm-theme') as 'dark' | 'light') ?? 'dark'
@@ -103,6 +114,46 @@ export default function LandingPage() {
         const tl = gsap.timeline({ repeat: -1, yoyo: true });
         tl.to(visualRef.current, { y: -22, duration: 3.8, ease: 'sine.inOut' });
         return () => { tl.kill(); };
+    }, []);
+
+    // ── GSAP: line-mask title reveals + parallax bg blobs (sasha-style) ──
+    useEffect(() => {
+        const ctx = gsap.context(() => {
+            // Line-mask: animate every <span> inside .lp-mask-title from y:100% → y:0%
+            document.querySelectorAll<HTMLElement>('.lp-mask-title').forEach(parent => {
+                const lines = parent.querySelectorAll<HTMLElement>(':scope > span, :scope > div > span');
+                gsap.fromTo(lines,
+                    { yPercent: 105 },
+                    {
+                        yPercent: 0,
+                        duration: 1.0,
+                        ease: 'power4.out',
+                        stagger: 0.08,
+                        scrollTrigger: {
+                            trigger: parent,
+                            start: 'top 80%',
+                            toggleActions: 'play none none reverse',
+                        },
+                    }
+                );
+            });
+
+            // Parallax bg blobs: data-parallax-y = "30" → translateY 30% across viewport
+            document.querySelectorAll<HTMLElement>('[data-parallax-y]').forEach(el => {
+                const yPercent = Number(el.dataset.parallaxY ?? '20');
+                gsap.to(el, {
+                    yPercent,
+                    ease: 'none',
+                    scrollTrigger: {
+                        trigger: el.closest('section') ?? el,
+                        start: 'top bottom',
+                        end: 'bottom top',
+                        scrub: true,
+                    },
+                });
+            });
+        });
+        return () => ctx.revert();
     }, []);
 
     // ── GSAP: stat counter on scroll ──
@@ -153,12 +204,9 @@ export default function LandingPage() {
                     style={{ display: 'flex', alignItems: 'center', gap: 9, fontWeight: 800, fontSize: '1rem', letterSpacing: '-0.02em', color: 'var(--text-primary)', marginRight: 'auto', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}
                 >
                     <div style={{
-                        width: 36, height: 36, borderRadius: 8,
-                        background: '#ffffff',
-                        padding: 3,
+                        width: 36, height: 36,
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                         flexShrink: 0,
-                        boxShadow: '0 0 0 1px rgba(28,111,255,0.2), 0 2px 8px rgba(28,111,255,0.15)',
                     }}>
                         <img src={deepMarketLogo} alt="DeepMarket" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
                     </div>
@@ -233,11 +281,8 @@ export default function LandingPage() {
                         transition={{ duration: 0.5 }}
                     >
                         <div style={{
-                            width: 56, height: 56, borderRadius: 14,
-                            background: '#ffffff',
-                            padding: 5,
+                            width: 56, height: 56,
                             display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            boxShadow: '0 0 0 1px rgba(28,111,255,0.25), 0 4px 20px rgba(28,111,255,0.2)',
                             flexShrink: 0,
                         }}>
                             <img src={deepMarketLogo} alt="DeepMarket" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
@@ -311,45 +356,58 @@ export default function LandingPage() {
                     </div>
                 </div>
 
-                {/* Right column — hero visual */}
-                <motion.div
-                    className="lp-hero-visual-wrap"
-                    initial={{ opacity: 0, scale: 0.82 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    transition={{ duration: 0.9, delay: 0.5, ease: [0.22, 1, 0.36, 1] }}
-                >
-                    {/* Glow behind asset */}
-                    <div style={{
-                        position: 'absolute', inset: -60,
-                        background: 'radial-gradient(ellipse at center, rgba(28,111,255,0.22) 0%, transparent 68%)',
-                        pointerEvents: 'none',
-                    }} />
-                    <img
-                        ref={visualRef}
-                        src={assetDB}
-                        alt="DeepBook"
-                        style={{
-                            width: 380, height: 380,
-                            objectFit: 'contain',
-                            mixBlendMode: 'screen',
-                            position: 'relative',
-                            filter: 'brightness(1.1)',
-                        }}
-                    />
-                    {/* Floating mini-assets */}
-                    <motion.img
-                        src={assetSignal}
-                        style={{ position: 'absolute', top: 20, right: -24, width: 72, mixBlendMode: 'screen', opacity: 0.75 }}
-                        animate={{ y: [0, -10, 0], rotate: [0, 4, 0] }}
-                        transition={{ duration: 4.5, repeat: Infinity, ease: 'easeInOut' }}
-                    />
-                    <motion.img
-                        src={assetStack}
-                        style={{ position: 'absolute', bottom: 16, left: -28, width: 64, mixBlendMode: 'screen', opacity: 0.65 }}
-                        animate={{ y: [0, 10, 0], rotate: [0, -5, 0] }}
-                        transition={{ duration: 5, repeat: Infinity, ease: 'easeInOut', delay: 0.8 }}
-                    />
-                </motion.div>
+                {/* Right column — hero visual: live three.js scene */}
+                <div ref={visualRef} className="lp-hero-visual-wrap">
+                    <div className="lp-hero-candles" style={{ width: '100%', maxWidth: 520, aspectRatio: '1 / 1', position: 'relative', background: 'transparent' }}>
+                        <HeroCandles3D triggerRef={heroRef} onActiveIndexChange={handleActiveCandle} />
+                        {/* Scroll showcase HUD — appears next to the focused candle */}
+                        <AnimatePresence>
+                            {activeCandle !== null && CANDLE_META[activeCandle] && (
+                                <motion.div
+                                    key={activeCandle}
+                                    initial={{ opacity: 0, y: 12, scale: 0.95 }}
+                                    animate={{ opacity: 1, y: 0,  scale: 1    }}
+                                    exit={{    opacity: 0, y: -8, scale: 0.96 }}
+                                    transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
+                                    style={{
+                                        position: 'absolute',
+                                        left: '50%', top: '6%',
+                                        transform: 'translateX(-50%)',
+                                        minWidth: 280, maxWidth: 360,
+                                        padding: '14px 18px',
+                                        background: 'rgba(10, 18, 32, 0.78)',
+                                        backdropFilter: 'blur(14px)',
+                                        WebkitBackdropFilter: 'blur(14px)',
+                                        border: '1px solid rgba(28,111,255,0.28)',
+                                        borderRadius: 12,
+                                        boxShadow: '0 10px 40px rgba(0,0,0,0.45), 0 0 24px rgba(28,111,255,0.18)',
+                                        pointerEvents: 'none',
+                                        zIndex: 4,
+                                    }}
+                                >
+                                    <div style={{
+                                        display: 'inline-block',
+                                        fontSize: '0.62rem', fontWeight: 800,
+                                        letterSpacing: '0.14em',
+                                        color: CANDLE_META[activeCandle].tag === 'YES' ? '#4d9fff' : '#ff7a92',
+                                        background: CANDLE_META[activeCandle].tag === 'YES' ? 'rgba(28,111,255,0.18)' : 'rgba(255,77,106,0.16)',
+                                        padding: '3px 9px',
+                                        borderRadius: 6,
+                                        marginBottom: 8,
+                                    }}>
+                                        {CANDLE_META[activeCandle].tag} · {String(activeCandle + 1).padStart(2, '0')}/09
+                                    </div>
+                                    <div style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: 4 }}>
+                                        {CANDLE_META[activeCandle].title}
+                                    </div>
+                                    <div style={{ fontSize: '0.82rem', lineHeight: 1.45, color: 'var(--text-muted)' }}>
+                                        {CANDLE_META[activeCandle].desc}
+                                    </div>
+                                </motion.div>
+                            )}
+                        </AnimatePresence>
+                    </div>
+                </div>
                 </div>{/* /lp-hero-inner */}
             </section>
 
@@ -397,121 +455,98 @@ export default function LandingPage() {
                 </div>
             </div>
 
-            {/* ══════════════════════ HOW IT WORKS ══════════════════════ */}
-            <section id="how-it-works" className="lp-section">
-                <motion.div
-                    style={{ textAlign: 'center', marginBottom: 64 }}
-                    initial="hidden" whileInView="show" viewport={{ once: true, amount: 0.5 }}
-                    variants={fadeUp}
-                >
-                    <div style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--yes)', marginBottom: 14 }}>
-                        Protocol
-                    </div>
-                    <h2 style={{ fontSize: 'clamp(1.7rem, 3.5vw, 2.4rem)', fontWeight: 800, letterSpacing: '-0.025em', color: 'var(--text-primary)' }}>
-                        How It Works
-                    </h2>
-                </motion.div>
+            {/* ══════════════════════ MARQUEE ══════════════════════ */}
+            <MarqueeRow />
 
-                <motion.div
-                    style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: 16 }}
-                    initial="hidden" whileInView="show" viewport={{ once: true, amount: 0.2 }}
-                    variants={stagger}
-                >
-                    {STEPS.map((s, i) => (
-                        <motion.div
-                            key={i}
-                            variants={fadeUp}
-                            whileHover={{ y: -4, borderColor: 'var(--yes-border)' }}
-                            style={{
-                                background: 'var(--bg-panel)',
-                                border: '1px solid var(--border-base)',
-                                borderRadius: 'var(--radius)',
-                                padding: '28px 24px',
-                                position: 'relative',
-                                overflow: 'hidden',
-                                transition: 'border-color 0.15s',
-                            }}
-                        >
-                            {/* Step number watermark */}
-                            <div style={{
-                                fontFamily: "'Doto', monospace",
-                                fontSize: '5rem', fontWeight: 900,
-                                color: 'rgba(28,111,255,0.06)',
-                                position: 'absolute', top: -8, right: 12,
-                                lineHeight: 1, userSelect: 'none', pointerEvents: 'none',
-                            }}>
-                                {s.n}
-                            </div>
-
-                            {/* Brand asset icon */}
-                            <div style={{ width: 52, height: 52, marginBottom: 18, position: 'relative' }}>
-                                <img src={s.img} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain', mixBlendMode: 'screen' }} />
-                            </div>
-
-                            <div style={{ fontSize: '0.78rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--yes)', marginBottom: 10 }}>
-                                {s.label}
-                            </div>
-                            <p style={{ fontSize: '0.84rem', color: 'var(--text-secondary)', lineHeight: 1.72 }}>
-                                {s.desc}
-                            </p>
-                        </motion.div>
-                    ))}
-                </motion.div>
-            </section>
+            {/* ══════════════════════ HOW IT WORKS — horizontal scroll ══════════════════════ */}
+            <HowItWorksHorizontal />
 
             {/* ══════════════════════ FEATURES ══════════════════════ */}
-            <section id="features" className="lp-section" style={{ paddingTop: 0 }}>
-                <motion.div
-                    style={{ textAlign: 'center', marginBottom: 64 }}
-                    initial="hidden" whileInView="show" viewport={{ once: true, amount: 0.5 }}
-                    variants={fadeUp}
-                >
+            <section id="features" className="lp-section" style={{ paddingTop: 80, position: 'relative', overflow: 'hidden' }}>
+                {/* Parallax bg blobs */}
+                <div
+                    data-parallax-y="-25"
+                    aria-hidden="true"
+                    style={{
+                        position: 'absolute', top: '-15%', right: '-10%',
+                        width: 520, height: 520, borderRadius: '50%',
+                        background: 'radial-gradient(circle, rgba(255,77,106,0.10) 0%, transparent 65%)',
+                        filter: 'blur(80px)', pointerEvents: 'none', zIndex: 0,
+                    }}
+                />
+                <div
+                    data-parallax-y="20"
+                    aria-hidden="true"
+                    style={{
+                        position: 'absolute', bottom: '-10%', left: '-12%',
+                        width: 460, height: 460, borderRadius: '50%',
+                        background: 'radial-gradient(circle, rgba(28,111,255,0.10) 0%, transparent 65%)',
+                        filter: 'blur(90px)', pointerEvents: 'none', zIndex: 0,
+                    }}
+                />
+
+                <div style={{ textAlign: 'center', marginBottom: 64, position: 'relative', zIndex: 1 }}>
                     <div style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--no)', marginBottom: 14 }}>
                         Infrastructure
                     </div>
-                    <h2 style={{ fontSize: 'clamp(1.7rem, 3.5vw, 2.4rem)', fontWeight: 800, letterSpacing: '-0.025em', color: 'var(--text-primary)' }}>
-                        Built Different
+                    <h2 className="lp-mask-title" style={{ fontSize: 'clamp(2.2rem, 6vw, 4.4rem)', fontWeight: 900, letterSpacing: '-0.035em', color: 'var(--text-primary)', margin: 0 }}>
+                        <span>Built Different</span>
                     </h2>
-                </motion.div>
+                </div>
 
                 <motion.div
-                    style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 16 }}
+                    className="lp-features-grid"
                     initial="hidden" whileInView="show" viewport={{ once: true, amount: 0.15 }}
                     variants={stagger}
+                    style={{ position: 'relative', zIndex: 1 }}
                 >
-                    {FEATURES.map((f, i) => (
-                        <motion.div
-                            key={i}
-                            variants={fadeUp}
-                            whileHover={{ y: -5 }}
-                            style={{
-                                background: 'var(--bg-panel)',
-                                border: '1px solid var(--border-base)',
-                                borderRadius: 'var(--radius)',
-                                padding: '32px 28px',
-                                position: 'relative',
-                                overflow: 'hidden',
-                            }}
-                        >
-                            {/* Subtle glow on hover area */}
-                            <div style={{
-                                position: 'absolute', top: -40, right: -40,
-                                width: 160, height: 160,
-                                background: 'radial-gradient(ellipse, rgba(28,111,255,0.06) 0%, transparent 70%)',
-                                pointerEvents: 'none',
-                            }} />
-
-                            <div style={{ width: 60, height: 60, marginBottom: 20 }}>
-                                <img src={f.img} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain', mixBlendMode: 'screen' }} />
+                    {/* DOMINANT — 8 cols, dark, with pulsing glow */}
+                    <motion.div
+                        variants={fadeUp}
+                        whileHover={{ scale: 1.012 }}
+                        transition={{ duration: 0.4, ease: 'easeOut' }}
+                        className="lp-feature-card lp-feature-card--dominant"
+                    >
+                        <div className="lp-feature-icon-wrap">
+                            <img src={FEATURES[0].img} alt="" className="lp-feature-icon" />
+                        </div>
+                        <div className="lp-feature-pulse" aria-hidden="true" />
+                        <div className="lp-feature-content">
+                            <div className="lp-feature-tag" style={{ color: 'var(--yes)' }}>
+                                Core Primitive
                             </div>
-                            <div style={{ fontWeight: 700, fontSize: '0.92rem', color: 'var(--text-primary)', marginBottom: 10, letterSpacing: '-0.01em' }}>
-                                {f.title}
-                            </div>
-                            <p style={{ fontSize: '0.83rem', color: 'var(--text-secondary)', lineHeight: 1.72 }}>
-                                {f.desc}
+                            <h3 className="lp-feature-title-big">
+                                {FEATURES[0].title}
+                            </h3>
+                            <p className="lp-feature-desc-big">
+                                {FEATURES[0].desc}
                             </p>
-                        </motion.div>
-                    ))}
+                        </div>
+                    </motion.div>
+
+                    {/* SECONDARY — 3 stacked, 4 cols */}
+                    <div className="lp-features-stack">
+                        {[FEATURES[1], FEATURES[2], FEATURES[3]].map((f, i) => (
+                            <motion.div
+                                key={i}
+                                variants={fadeUp}
+                                whileHover={{ scale: 1.025 }}
+                                transition={{ duration: 0.35, ease: 'easeOut' }}
+                                className={`lp-feature-card lp-feature-card--small`}
+                                style={{
+                                    background: i === 0
+                                        ? 'linear-gradient(135deg, rgba(255,77,106,0.06) 0%, rgba(28,111,255,0.04) 100%)'
+                                        : 'var(--bg-panel)',
+                                }}
+                            >
+                                <div className="lp-feature-icon-corner">
+                                    <img src={f.img} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain', mixBlendMode: 'screen' }} />
+                                </div>
+                                <h3 className="lp-feature-title-small">{f.title}</h3>
+                                <p className="lp-feature-desc-small">{f.desc}</p>
+                            </motion.div>
+                        ))}
+                    </div>
                 </motion.div>
             </section>
 
@@ -543,34 +578,38 @@ export default function LandingPage() {
                         position: 'absolute', right: 40, top: '50%', transform: 'translateY(-50%)',
                         display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, opacity: 0.18,
                     }}>
-                        <div style={{ width: 64, height: 64, borderRadius: 16, background: '#fff', padding: 6 }}>
+                        <div style={{ width: 64, height: 64 }}>
                             <img src={deepMarketLogo} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
                         </div>
                         <img src={assetInfinity} alt="" style={{ width: 80, mixBlendMode: 'screen' }} />
                     </div>
 
-                    <h2 style={{
-                        fontSize: 'clamp(1.5rem, 3vw, 2rem)',
-                        fontWeight: 800, letterSpacing: '-0.025em',
+                    <h2 className="lp-mask-title" style={{
+                        fontSize: 'clamp(2rem, 5vw, 3.5rem)',
+                        fontWeight: 900, letterSpacing: '-0.035em',
                         color: 'var(--text-primary)', marginBottom: 16,
                         position: 'relative',
+                        lineHeight: 1.05,
                     }}>
-                        Ready to make your first prediction?
+                        <div><span>Ready to make</span></div>
+                        <div><span>your first prediction?</span></div>
                     </h2>
                     <p style={{ fontSize: '0.92rem', color: 'var(--text-secondary)', marginBottom: 36, position: 'relative' }}>
                         Connect your Sui wallet and start trading outcome tokens on live markets.
                     </p>
                     <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap', position: 'relative' }}>
-                        <motion.button
-                            className="btn btn-primary"
-                            style={{ fontSize: '0.95rem', padding: '11px 32px', display: 'flex', alignItems: 'center', gap: 8 }}
-                            onClick={() => navigate('/markets')}
-                            whileHover={{ scale: 1.05, boxShadow: '0 0 32px rgba(28,111,255,0.5)' }}
-                            whileTap={{ scale: 0.97 }}
-                        >
-                            Open Markets
-                            <ArrowRight size={15} />
-                        </motion.button>
+                        <MagneticButton strength={28}>
+                            <motion.button
+                                className="btn btn-primary"
+                                style={{ fontSize: '0.95rem', padding: '14px 36px', display: 'flex', alignItems: 'center', gap: 8 }}
+                                onClick={() => navigate('/markets')}
+                                whileHover={{ boxShadow: '0 0 40px rgba(28,111,255,0.55)' }}
+                                whileTap={{ scale: 0.97 }}
+                            >
+                                Open Markets
+                                <ArrowRight size={15} />
+                            </motion.button>
+                        </MagneticButton>
                         <motion.a
                             href={`https://suiscan.xyz/testnet/object/${import.meta.env.VITE_PACKAGE_ID}`}
                             target="_blank"
@@ -595,9 +634,8 @@ export default function LandingPage() {
             }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                     <div style={{
-                        width: 28, height: 28, borderRadius: 6, background: '#fff',
-                        padding: 2, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        boxShadow: '0 0 0 1px rgba(28,111,255,0.15)',
+                        width: 28, height: 28,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
                     }}>
                         <img src={deepMarketLogo} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
                     </div>

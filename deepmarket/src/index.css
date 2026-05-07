@@ -1657,6 +1657,197 @@ body {
   .market-card  { padding: 14px; }
 }
 
+/* ══════════════════ LANDING — How It Works (horizontal scroll) ══════════════════ */
+.lp-hiw-section { height: 100vh; }
+.lp-hiw-track   { display: flex; height: 100vh; }
+.lp-hiw-panel   { /* widths set inline */ }
+
+@media (max-width: 900px) {
+  /* Mobile: vertical stack, no pin */
+  .lp-hiw-section { height: auto !important; }
+  .lp-hiw-track   {
+    flex-direction: column;
+    width: 100% !important;
+    height: auto !important;
+    transform: none !important;
+  }
+  .lp-hiw-panel {
+    width: 100% !important;
+    height: auto !important;
+    min-height: 80vh;
+    padding: 56px 6vw !important;
+  }
+  .lp-hiw-grid {
+    grid-template-columns: 1fr !important;
+    gap: 36px !important;
+  }
+  .lp-hiw-side {
+    border-left: none !important;
+    border-top: 1px solid var(--border-base);
+    padding-left: 0 !important;
+    padding-top: 28px;
+  }
+}
+
+/* ══════════════════ LANDING — asymmetric Features layout ══════════════════ */
+.lp-features-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  gap: 18px;
+  min-height: 540px;
+}
+.lp-features-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-height: 0;
+}
+.lp-feature-card {
+  background: var(--bg-panel);
+  border: 1px solid var(--border-base);
+  border-radius: var(--radius-lg);
+  position: relative;
+  overflow: hidden;
+  transition: border-color 0.3s, box-shadow 0.3s;
+}
+.lp-feature-card:hover {
+  border-color: var(--yes-border);
+  box-shadow: 0 8px 36px rgba(0,0,0,0.32), 0 0 28px rgba(28,111,255,0.08);
+}
+.lp-feature-card--dominant {
+  padding: 44px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  background: linear-gradient(135deg, rgba(6,12,23,0.95) 0%, rgba(10,24,52,0.92) 100%);
+  min-height: 540px;
+}
+.lp-feature-card--dominant .lp-feature-icon-wrap {
+  width: 64px;
+  height: 64px;
+  border-radius: 16px;
+  background: rgba(28,111,255,0.12);
+  border: 1px solid rgba(28,111,255,0.22);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(10px);
+  z-index: 2;
+}
+.lp-feature-icon {
+  width: 36px;
+  height: 36px;
+  object-fit: contain;
+  mix-blend-mode: screen;
+}
+.lp-feature-pulse {
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  width: 480px; height: 480px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(28,111,255,0.18) 0%, transparent 65%);
+  filter: blur(60px);
+  pointer-events: none;
+  animation: lp-feature-pulse 6s ease-in-out infinite;
+}
+@keyframes lp-feature-pulse {
+  0%, 100% { transform: translate(-50%, -50%) scale(1);   opacity: 0.55; }
+  50%      { transform: translate(-50%, -50%) scale(1.15); opacity: 0.85; }
+}
+.lp-feature-content {
+  position: relative;
+  z-index: 2;
+  margin-top: auto;
+  padding-top: 80px;
+  max-width: 520px;
+}
+.lp-feature-tag {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  margin-bottom: 16px;
+}
+.lp-feature-title-big {
+  font-size: clamp(1.6rem, 3vw, 2.4rem);
+  font-weight: 800;
+  letter-spacing: -0.025em;
+  color: var(--text-primary);
+  margin: 0 0 14px;
+  line-height: 1.1;
+}
+.lp-feature-desc-big {
+  font-size: clamp(0.95rem, 1.2vw, 1.1rem);
+  color: var(--text-secondary);
+  line-height: 1.65;
+  margin: 0;
+}
+.lp-feature-card--small {
+  flex: 1;
+  padding: 28px 26px;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 168px;
+}
+.lp-feature-icon-corner {
+  position: absolute;
+  top: 22px; right: 22px;
+  width: 36px; height: 36px;
+  opacity: 0.65;
+}
+.lp-feature-title-small {
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  color: var(--text-primary);
+  margin: 0 0 8px;
+  padding-right: 50px;
+}
+.lp-feature-desc-small {
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  margin: 0;
+}
+@media (max-width: 900px) {
+  .lp-features-grid {
+    grid-template-columns: 1fr;
+    min-height: auto;
+  }
+  .lp-feature-card--dominant {
+    min-height: 380px;
+    padding: 32px 28px;
+  }
+  .lp-feature-content { padding-top: 40px; }
+}
+
+/* ══════════════════ LANDING — line-mask title pattern ══════════════════ */
+.lp-mask-title {
+  display: block;
+  line-height: 1.05;
+}
+/* Single-line: the title itself is the mask */
+.lp-mask-title > span {
+  display: inline-block;
+  will-change: transform;
+}
+/* Multi-line: each direct <div> is a per-line mask */
+.lp-mask-title > div {
+  overflow: hidden;
+  display: block;
+}
+.lp-mask-title > div > span {
+  display: inline-block;
+  will-change: transform;
+}
+/* Apply overflow-hidden only when the title is the mask boundary (single-line) */
+.lp-mask-title:not(:has(> div)) {
+  overflow: hidden;
+}
+
 /* ══════════════════ LANDING PAGE RESPONSIVE ══════════════════ */
 
 /* Hero layout: flex row → column */
@@ -1672,7 +1863,7 @@ body {
 }
 .lp-hero-text  { flex: 1 1 460px; min-width: 0; }
 .lp-hero-visual-wrap {
-  flex: 0 0 420px;
+  flex: 0 0 480px;
   position: relative;
   display: flex;
   align-items: center;
@@ -1683,19 +1874,52 @@ body {
   .lp-hero-inner         { flex-direction: column; padding: 60px 24px 40px; min-height: auto; gap: 32px; }
   .lp-hero-text          { flex: none; width: 100%; }
   .lp-hero-visual-wrap   { flex: 0 0 auto; }
-  .lp-hero-visual-wrap img:first-child { width: 260px !important; height: 260px !important; }
+  .lp-hero-candles       { max-width: 320px !important; }
 }
 
 @media (max-width: 640px) {
-  .lp-hero-inner         { padding: 36px 20px 32px; gap: 24px; text-align: center; }
-  .lp-hero-visual-wrap   { display: none; }
+  .lp-hero-inner         { padding: 36px 16px 32px; gap: 28px; text-align: center; }
+  .lp-hero-visual-wrap   { display: flex; }
+  .lp-hero-candles       { max-width: 240px !important; }
   .lp-hero-ctas          { justify-content: center; }
-  .lp-hero-badge-row     { justify-content: center; }
+  .lp-hero-badge-row     { justify-content: center; flex-wrap: wrap; }
 }
 
 /* Landing nav links: hide on mobile */
 .lp-nav-links { display: flex; gap: 4px; }
 @media (max-width: 640px) { .lp-nav-links { display: none; } }
+
+/* ══════════════════ LANDING — Navbar + CTA + global mobile sweep ══════════════════ */
+
+/* Landing navbar — tighten padding, hide non-essential items on mobile */
+@media (max-width: 640px) {
+  .landing-nav { padding: 0 12px !important; gap: 8px !important; height: 52px !important; }
+  /* The "Enter App" button is wide — hide on phones, ConnectButton stays */
+  .landing-nav .btn.btn-primary.btn-sm { display: none; }
+}
+
+/* CTA banner — ease padding on small screens */
+.lp-cta-inner { padding: 64px 48px; }
+@media (max-width: 900px) {
+  .lp-cta-inner { padding: 48px 28px !important; }
+  .lp-cta-deco  { display: none !important; }
+}
+@media (max-width: 640px) {
+  .lp-cta-inner { padding: 36px 20px !important; }
+}
+
+/* Marquee — smaller on phones */
+@media (max-width: 640px) {
+  .lp-marquee { padding: 40px 0 !important; }
+}
+
+/* Hero h1 — scale headline on phones */
+@media (max-width: 640px) {
+  .h-l1, .h-l2 { font-size: clamp(2.4rem, 12vw, 3.6rem) !important; }
+}
+
+/* Disable horizontal page overflow on mobile (horizontal-scroll panels can otherwise leak) */
+html.has-horizontal-pin body, body { overflow-x: hidden; }
 
 /* Landing section padding */
 .lp-section { padding: 80px 32px; max-width: 1100px; margin: 0 auto; }
