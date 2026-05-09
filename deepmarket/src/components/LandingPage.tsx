@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback, type CSSProperties } from 'react';
 import { AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
@@ -14,6 +14,7 @@ import HeroCandles3D from './HeroCandles3D';
 import MarqueeRow from './MarqueeRow';
 import HowItWorksHorizontal from './HowItWorksHorizontal';
 import MagneticButton from './MagneticButton';
+import InfrastructureStack3D, { type LayerSpec } from './InfrastructureStack3D';
 
 // DeepBook brand assets
 import assetInfinity  from '../assets/deepbookdes/Frame 2147260714.png';
@@ -28,11 +29,6 @@ gsap.registerPlugin(ScrollTrigger);
 const fadeUp = {
     hidden: { opacity: 0, y: 28 },
     show:   { opacity: 1, y: 0,  transition: { duration: 0.65, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] } },
-};
-
-const stagger = {
-    hidden: {},
-    show:   { transition: { staggerChildren: 0.12 } },
 };
 
 // ── Features data ──
@@ -59,6 +55,14 @@ const FEATURES = [
     },
 ];
 
+// ── Infrastructure stack — layer colors (bottom→top mirrors FEATURES order) ──
+const INFRA_LAYERS: LayerSpec[] = [
+    { color: '#1c6fff', edgeColor: '#4d9fff' },  // L01 — DeepBook V3 Order Books
+    { color: '#3a85ff', edgeColor: '#7ab4ff' },  // L02 — YES/NO Outcome Tokens
+    { color: '#ff4d6a', edgeColor: '#ff8095' },  // L03 — On-Chain Resolution
+    { color: '#ff7a92', edgeColor: '#ffadbb' },  // L04 — Permissionless Creation
+];
+
 // ── Candle showcase metadata (one entry per candle, indices 0..8) ──
 const CANDLE_META = [
     { tag: 'YES',  title: 'Decentralized Order Book',     desc: 'Real CLOB matching on Sui — no AMM curves, no slippage tricks.' },
@@ -79,9 +83,13 @@ export default function LandingPage() {
     const heroRef     = useRef<HTMLElement>(null);
     const visualRef   = useRef<HTMLDivElement>(null);
     const statsRef    = useRef<HTMLDivElement>(null);
+    const featuresRef = useRef<HTMLElement>(null);
 
     const [activeCandle, setActiveCandle] = useState<number | null>(null);
     const handleActiveCandle = useCallback((idx: number | null) => setActiveCandle(idx), []);
+
+    const [activeLayer, setActiveLayer] = useState<number | null>(null);
+    const handleLayerHover = useCallback((idx: number | null) => setActiveLayer(idx), []);
 
     const [theme, setTheme] = useState<'dark' | 'light'>(
         () => (localStorage.getItem('dm-theme') as 'dark' | 'light') ?? 'dark'
@@ -461,8 +469,13 @@ export default function LandingPage() {
             {/* ══════════════════════ HOW IT WORKS — horizontal scroll ══════════════════════ */}
             <HowItWorksHorizontal />
 
-            {/* ══════════════════════ FEATURES ══════════════════════ */}
-            <section id="features" className="lp-section" style={{ paddingTop: 80, position: 'relative', overflow: 'hidden' }}>
+            {/* ══════════════════════ INFRASTRUCTURE — 3D layered stack ══════════════════════ */}
+            <section
+                id="features"
+                ref={featuresRef}
+                className="lp-section lp-infra-section"
+                style={{ paddingTop: 80, paddingBottom: 80, position: 'relative', overflow: 'hidden' }}
+            >
                 {/* Parallax bg blobs */}
                 <div
                     data-parallax-y="-25"
@@ -485,7 +498,7 @@ export default function LandingPage() {
                     }}
                 />
 
-                <div style={{ textAlign: 'center', marginBottom: 64, position: 'relative', zIndex: 1 }}>
+                <div style={{ textAlign: 'center', marginBottom: 56, position: 'relative', zIndex: 1 }}>
                     <div style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--no)', marginBottom: 14 }}>
                         Infrastructure
                     </div>
@@ -494,60 +507,51 @@ export default function LandingPage() {
                     </h2>
                 </div>
 
-                <motion.div
-                    className="lp-features-grid"
-                    initial="hidden" whileInView="show" viewport={{ once: true, amount: 0.15 }}
-                    variants={stagger}
-                    style={{ position: 'relative', zIndex: 1 }}
-                >
-                    {/* DOMINANT — 8 cols, dark, with pulsing glow */}
-                    <motion.div
-                        variants={fadeUp}
-                        whileHover={{ scale: 1.012 }}
-                        transition={{ duration: 0.4, ease: 'easeOut' }}
-                        className="lp-feature-card lp-feature-card--dominant"
-                    >
-                        <div className="lp-feature-icon-wrap">
-                            <img src={FEATURES[0].img} alt="" className="lp-feature-icon" />
-                        </div>
-                        <div className="lp-feature-pulse" aria-hidden="true" />
-                        <div className="lp-feature-content">
-                            <div className="lp-feature-tag" style={{ color: 'var(--yes)' }}>
-                                Core Primitive
-                            </div>
-                            <h3 className="lp-feature-title-big">
-                                {FEATURES[0].title}
-                            </h3>
-                            <p className="lp-feature-desc-big">
-                                {FEATURES[0].desc}
-                            </p>
-                        </div>
-                    </motion.div>
-
-                    {/* SECONDARY — 3 stacked, 4 cols */}
-                    <div className="lp-features-stack">
-                        {[FEATURES[1], FEATURES[2], FEATURES[3]].map((f, i) => (
-                            <motion.div
-                                key={i}
-                                variants={fadeUp}
-                                whileHover={{ scale: 1.025 }}
-                                transition={{ duration: 0.35, ease: 'easeOut' }}
-                                className={`lp-feature-card lp-feature-card--small`}
-                                style={{
-                                    background: i === 0
-                                        ? 'linear-gradient(135deg, rgba(255,77,106,0.06) 0%, rgba(28,111,255,0.04) 100%)'
-                                        : 'var(--bg-panel)',
-                                }}
-                            >
-                                <div className="lp-feature-icon-corner">
-                                    <img src={f.img} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain', mixBlendMode: 'screen' }} />
-                                </div>
-                                <h3 className="lp-feature-title-small">{f.title}</h3>
-                                <p className="lp-feature-desc-small">{f.desc}</p>
-                            </motion.div>
-                        ))}
+                <div className="lp-infra-grid">
+                    {/* LEFT — 3D stack canvas with technical frame */}
+                    <div className="lp-infra-canvas">
+                        <span className="lp-infra-canvas-corner tl" />
+                        <span className="lp-infra-canvas-corner tr" />
+                        <span className="lp-infra-canvas-corner bl" />
+                        <span className="lp-infra-canvas-corner br" />
+                        <InfrastructureStack3D
+                            triggerRef={featuresRef}
+                            layers={INFRA_LAYERS}
+                            activeIndex={activeLayer}
+                            onLayerHover={handleLayerHover}
+                        />
                     </div>
-                </motion.div>
+
+                    {/* RIGHT — description cards (bottom-of-stack first to mirror 3D) */}
+                    <div className="lp-infra-cards">
+                        {FEATURES.map((f, i) => {
+                            const isActive = activeLayer === i;
+                            const accentColor = INFRA_LAYERS[i].edgeColor;
+                            return (
+                                <motion.div
+                                    key={i}
+                                    onMouseEnter={() => setActiveLayer(i)}
+                                    onMouseLeave={() => setActiveLayer(null)}
+                                    initial={{ opacity: 0, x: 24 }}
+                                    whileInView={{ opacity: 1, x: 0 }}
+                                    viewport={{ once: true, amount: 0.4 }}
+                                    transition={{ delay: i * 0.08, duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+                                    className={`lp-infra-card ${isActive ? 'is-active' : ''}`}
+                                    style={{ '--accent': accentColor } as CSSProperties}
+                                >
+                                    <div className="lp-infra-card-num">
+                                        L{String(i + 1).padStart(2, '0')}
+                                    </div>
+                                    <div className="lp-infra-card-body">
+                                        <h3 className="lp-infra-card-title">{f.title}</h3>
+                                        <p className="lp-infra-card-desc">{f.desc}</p>
+                                    </div>
+                                    <div className="lp-infra-card-bar" aria-hidden="true" />
+                                </motion.div>
+                            );
+                        })}
+                    </div>
+                </div>
             </section>
 
             {/* ══════════════════════ CTA BANNER ══════════════════════ */}

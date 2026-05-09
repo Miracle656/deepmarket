@@ -21,6 +21,15 @@ export const CONFIG = {
     DEEP_TOKEN_TYPE: import.meta.env.VITE_DEEP_TOKEN_TYPE as string,
     DEEP_SCALAR: 1_000_000n,     // 1 DEEP = 1,000,000 base units (6 decimals)
     DEEP_POOL_FEE: 500_000_000n, // 500 DEEP per pool (from POOL_CREATION_FEE_DEEP)
+
+    // ── DeepBook Predict (testnet, predict-testnet-4-16 branch) ──
+    PREDICT_PACKAGE_ID: '0xf5ea2b3749c65d6e56507cc35388719aadb28f9cab873696a2f8687f5c785138',
+    PREDICT_REGISTRY_ID: '0x43af14fed5480c20ff77e2263d5f794c35b9fab7e2212903127062f4fe2a6e64',
+    PREDICT_OBJECT_ID:   '0xc8736204d12f0a7277c86388a68bf8a194b0a14c5538ad13f22cbd8e2a38028a',
+    PREDICT_DUSDC_TYPE:  '0xe95040085976bfd54a1a07225cd46c8a2b4e8e2b6732f140a0fc49850ba73e1a::dusdc::DUSDC',
+    PREDICT_PLP_TYPE:    '0xf5ea2b3749c65d6e56507cc35388719aadb28f9cab873696a2f8687f5c785138::plp::PLP',
+    PREDICT_SERVER_URL:  'https://predict-server.testnet.mystenlabs.com',
+    DUSDC_DECIMALS: 6,
 };
 
 export type MarketStatus = 'Active' | 'Resolved';

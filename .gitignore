@@ -6,3 +6,7 @@ target/
 *.key
 owned_objects.json
 tx_history.json
+
+# Pitch deck artifacts — kept local, never committed
+pitch-deck.html
+pitch-assets/

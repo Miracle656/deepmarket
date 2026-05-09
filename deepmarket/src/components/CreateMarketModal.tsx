@@ -4,6 +4,8 @@ import { useSignAndExecuteTransaction, useCurrentAccount, useSuiClient } from '@
 import { useToast } from '../lib/toast';
 import { compileMarket } from '../lib/api';
 import { CONFIG } from '../lib/config';
+import { useMessagingClient } from '../contexts/MessagingClientContext';
+import { marketUuidFor } from '../lib/messaging';
 
 interface Props {
     onCreated: (question: string, resolutionTime: number, oracle: string) => void;
@@ -25,6 +27,7 @@ export default function CreateMarketModal({ onCreated, onClose }: Props) {
     const acct = useCurrentAccount();
     const suiClient = useSuiClient();
     const { mutateAsync: signAndExec } = useSignAndExecuteTransaction();
+    const messagingClient = useMessagingClient();
     const { toast } = useToast();
 
     const [question, setQuestion]   = useState('');
@@ -207,9 +210,57 @@ export default function CreateMarketModal({ onCreated, onClose }: Props) {
                 ],
             });
 
-            await signAndExec({ transaction: registerTx });
+            const regResult = await signAndExec({ transaction: registerTx });
 
-            toast('success', 'Market live on Sui Testnet!', `Package: ${packageId.slice(0, 16)}…`);
+            // Pull the freshly assigned market_id from MarketCreatedEvent so we
+            // can derive a deterministic chat UUID for the market.
+            let createdMarketId: string | null = null;
+            try {
+                const regRes = await suiClient.waitForTransaction({
+                    digest: regResult.digest,
+                    options: { showEvents: true },
+                });
+                for (const ev of regRes.events ?? []) {
+                    const t = (ev as { type?: string }).type ?? '';
+                    if (t.endsWith('::MarketCreatedEvent')) {
+                        const parsed = (ev as { parsedJson?: { market_id?: string | number } })
+                            .parsedJson;
+                        if (parsed?.market_id !== undefined) {
+                            createdMarketId = String(parsed.market_id);
+                            break;
+                        }
+                    }
+                }
+            } catch {
+                // best-effort; fall through without chat
+            }
+
+            // Best-effort chat group creation. Failure here does NOT fail the
+            // overall market creation flow — the user can still create the
+            // chat from the market detail page later.
+            if (createdMarketId && messagingClient) {
+                try {
+                    toast('info', 'Creating chat…', 'Setting up the discussion group');
+                    const chatUuid = marketUuidFor(createdMarketId);
+                    const chatTx = new Transaction();
+                    await messagingClient.messaging.call.createAndShareGroup({
+                        uuid: chatUuid,
+                        name: question.trim().slice(0, 80),
+                    })(chatTx);
+                    await signAndExec({ transaction: chatTx });
+                    toast('success', 'Market + chat live!', `Package: ${packageId.slice(0, 16)}…`);
+                } catch (chatErr) {
+                    console.warn('Chat creation failed (non-fatal):', chatErr);
+                    toast(
+                        'success',
+                        'Market live, chat skipped',
+                        'You can create the chat from the market page.'
+                    );
+                }
+            } else {
+                toast('success', 'Market live on Sui Testnet!', `Package: ${packageId.slice(0, 16)}…`);
+            }
+
             onCreated(question.trim(), resolutionTime, oracleAddr);
             onClose();
         } catch (e: any) {
@@ -242,8 +293,8 @@ export default function CreateMarketModal({ onCreated, onClose }: Props) {
 
                 <div className="alert alert-info">
                     {skipPools
-                        ? <>Markets created without pools support <strong>mint, resolve, and redeem</strong> — the full prediction market flow. DeepBook order-book trading requires pools (needs 1000 DEEP testnet tokens, currently unavailable).</>
-                        : <>Full creation requires <strong>1000 DEEP</strong> testnet tokens (500 DEEP × 2 pools). DEEP testnet tokens are currently unavailable — use "Skip pools" mode below.</>
+                        ? <>Markets created without pools support <strong>mint, resolve, redeem</strong> — and <strong>per-market chat</strong>. Skip pools while iterating; turn them on for the demo market.</>
+                        : <>Full creation requires <strong>1000 DEEP</strong> testnet tokens (500 DEEP × 2 pools). Make sure your wallet has them before continuing — pool creation cannot be retried with insufficient DEEP.</>
                     }
                 </div>
 
@@ -285,7 +336,7 @@ export default function CreateMarketModal({ onCreated, onClose }: Props) {
                         checked={!skipPools}
                         onChange={e => setSkipPools(!e.target.checked)}
                     />
-                    Enable DeepBook order-book trading (requires 1000 DEEP testnet tokens — currently unavailable)
+                    Enable DeepBook order-book trading (requires 1000 DEEP testnet tokens)
                 </label>
 
                 <div style={{ display: 'flex', gap: 8 }}>

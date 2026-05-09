@@ -10,6 +10,8 @@ import ResolveMarketModal from './components/ResolveMarketModal';
 import MarketDetailPage from './components/MarketDetailPage';
 import LandingPage from './components/LandingPage';
 import PortfolioPage from './components/PortfolioPage';
+import PredictPage from './components/PredictPage';
+import PredictDetailPage from './components/PredictDetailPage';
 import { rippleThemeToggle } from './lib/themeToggle';
 
 type Filter = 'All' | 'Active' | 'Resolved';
@@ -76,7 +78,7 @@ function AppInner() {
         </button>
 
         <div className="nav-tabs">
-          {(['markets', 'portfolio', 'about'] as const).map(t => (
+          {(['markets', 'predict', 'portfolio', 'about'] as const).map(t => (
             <NavLink
               key={t}
               to={`/${t}`}
@@ -243,6 +245,8 @@ function AppInner() {
               />
             } />
 
+            <Route path="/predict" element={<PredictPage />} />
+            <Route path="/predict/:oracleId" element={<PredictDetailPage />} />
             <Route path="/portfolio" element={<PortfolioPage markets={markets} />} />
 
             <Route path="/about" element={

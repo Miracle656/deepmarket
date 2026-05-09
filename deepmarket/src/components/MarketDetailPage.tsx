@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, LineChart, MessageCircle } from 'lucide-react';
 import type { Market } from '../lib/config';
 import TvChart from './TvChart';
 import TradeSidebar from './TradeSidebar';
 import MintTokensModal from './MintTokensModal';
+import MarketChat from './MarketChat';
 
 function formatDate(ms: number) {
     const d = new Date(ms);
@@ -29,6 +30,7 @@ export default function MarketDetailPage({ markets, theme, onResolve }: Props) {
     const market = markets.find(m => m.objectId === marketId);
     const [priceHistory, setPriceHistory] = useState<PricePoint[]>([]);
     const [showMint, setShowMint] = useState(false);
+    const [activeTab, setActiveTab] = useState<'chart' | 'chat'>('chart');
 
     useEffect(() => {
         if (!market) return;
@@ -115,10 +117,39 @@ export default function MarketDetailPage({ markets, theme, onResolve }: Props) {
                         </div>
                     </div>
 
-                    {/* Chart */}
-                    <div style={{ marginTop: 32, marginBottom: 16, height: 450, width: '100%' }}>
-                        <TvChart priceHistory={priceHistory} theme={theme} />
+                    {/* Tab strip */}
+                    <div className="market-tabs" role="tablist">
+                        <button
+                            className={`market-tab ${activeTab === 'chart' ? 'active' : ''}`}
+                            onClick={() => setActiveTab('chart')}
+                            role="tab"
+                            aria-selected={activeTab === 'chart'}
+                        >
+                            <LineChart size={14} /> Chart
+                        </button>
+                        <button
+                            className={`market-tab ${activeTab === 'chat' ? 'active' : ''}`}
+                            onClick={() => setActiveTab('chat')}
+                            role="tab"
+                            aria-selected={activeTab === 'chat'}
+                        >
+                            <MessageCircle size={14} /> Chat
+                        </button>
                     </div>
+
+                    {/* Tab body */}
+                    {activeTab === 'chart' ? (
+                        <div style={{ marginTop: 16, marginBottom: 16, height: 450, width: '100%' }}>
+                            <TvChart priceHistory={priceHistory} theme={theme} />
+                        </div>
+                    ) : (
+                        <div style={{ marginTop: 16, marginBottom: 16, height: 450, width: '100%' }}>
+                            <MarketChat
+                                marketObjectId={market.objectId}
+                                marketTitle={market.question}
+                            />
+                        </div>
+                    )}
                 </div>
             </div>
 
