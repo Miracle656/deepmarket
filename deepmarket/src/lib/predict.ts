@@ -160,20 +160,34 @@ export async function getManagerPositions(managerId: string): Promise<Position[]
 
 /**
  * Find an existing PredictManager owned by `address` by scanning /managers.
- * Cold-start fallback when the localStorage cache is empty.
+ * Cold-start fallback when the localStorage cache is empty. Returns only the
+ * first manager; use `findAllManagersByOwner` to see every manager.
  */
 export async function findManagerByOwner(address: string): Promise<string | null> {
+    const all = await findAllManagersByOwner(address);
+    return all[0] ?? null;
+}
+
+/**
+ * Return EVERY PredictManager owned by `address`. The protocol allows a
+ * single owner to hold multiple managers (e.g., one for web-app trading +
+ * one for a Telegram bot wallet — same Sui address can spawn both via
+ * `predict::create_manager`). Returns ids newest-first.
+ */
+export async function findAllManagersByOwner(address: string): Promise<string[]> {
     try {
         const all = await fetchJson<ManagerListEntry[]>(`/managers`);
         const lower = address.toLowerCase();
+        const matched: ManagerListEntry[] = [];
         for (const m of all) {
             if (m.owner?.toLowerCase() === lower && m.manager_id) {
-                return m.manager_id;
+                matched.push(m);
             }
         }
-        return null;
+        // Server returns newest-first already; preserve that order.
+        return matched.map((m) => m.manager_id);
     } catch {
-        return null;
+        return [];
     }
 }
 

@@ -20,6 +20,7 @@ import { formatVol } from '../App';
 import {
     getCachedManagerId,
     findManagerByOwner,
+    findAllManagersByOwner,
     setCachedManagerId,
     getManagerSummary,
     getManagerPositions,
@@ -48,12 +49,15 @@ export default function PortfolioPage({ markets }: Props) {
     const [positions, setPositions] = useState<SpotPosition[]>([]);
     const [loading, setLoading] = useState(false);
 
-    // Predict state
-    const [managerId, setManagerId] = useState<string | null>(null);
-    const [manager, setManager] = useState<ManagerSummary | null>(null);
-    const [predictPositions, setPredictPositions] = useState<Position[]>([]);
+    // Predict state — one entry per manager owned by the connected wallet.
+    interface ManagerCard {
+        id: string;
+        summary: ManagerSummary | null;
+        positions: Position[];
+    }
+    const [managerCards, setManagerCards] = useState<ManagerCard[]>([]);
     const [predictLoading, setPredictLoading] = useState(false);
-    const [withdrawing, setWithdrawing] = useState(false);
+    const [withdrawingId, setWithdrawingId] = useState<string | null>(null);
     const [withdrawMsg, setWithdrawMsg] = useState<string | null>(null);
 
     // ── Spot positions (existing) ────────────────────────────────────────
@@ -88,47 +92,42 @@ export default function PortfolioPage({ markets }: Props) {
         });
     }, [acct, markets]);
 
-    // ── Predict manager + positions ──────────────────────────────────────
+    // ── Predict managers + positions (multi-manager) ────────────────────
     useEffect(() => {
         if (!acct?.address) {
-            setManagerId(null);
-            setManager(null);
-            setPredictPositions([]);
+            setManagerCards([]);
             return;
         }
         let cancelled = false;
         setPredictLoading(true);
         (async () => {
-            let id = getCachedManagerId(acct.address);
-            if (!id) {
-                id = await findManagerByOwner(acct.address);
-                if (id) setCachedManagerId(acct.address, id);
+            const ids = await findAllManagersByOwner(acct.address);
+            // Seed the localStorage cache with the first manager so the
+            // Predict detail page picks it up on cold load.
+            if (ids[0] && !getCachedManagerId(acct.address)) {
+                setCachedManagerId(acct.address, ids[0]);
             }
-            if (cancelled) return;
-            setManagerId(id);
-            if (id) {
-                try {
-                    const [s, p] = await Promise.all([
-                        getManagerSummary(id),
+            const cards = await Promise.all(
+                ids.map(async (id) => {
+                    const [summary, positions] = await Promise.all([
+                        getManagerSummary(id).catch(() => null),
                         getManagerPositions(id).catch(() => [] as Position[]),
                     ]);
-                    if (!cancelled) {
-                        setManager(s);
-                        setPredictPositions(p);
-                    }
-                } catch {
-                    /* indexer lag — leave empty */
-                }
-            } else {
-                setManager(null);
-                setPredictPositions([]);
+                    return { id, summary, positions };
+                })
+            );
+            if (!cancelled) {
+                setManagerCards(cards);
+                setPredictLoading(false);
             }
-            if (!cancelled) setPredictLoading(false);
         })();
         return () => {
             cancelled = true;
         };
     }, [acct?.address]);
+
+    // Reference deprecated helper to keep import linkage explicit.
+    void findManagerByOwner;
 
     if (!acct) {
         return (
@@ -146,17 +145,7 @@ export default function PortfolioPage({ markets }: Props) {
         );
     }
 
-    // Predict aggregates
-    const openPredictPositions = predictPositions.filter(
-        (p) => p.open_quantity > 0
-    );
     const dusdcDecimals = CONFIG.DUSDC_DECIMALS;
-    const managerBalance =
-        (manager?.trading_balance ?? 0) / 10 ** dusdcDecimals;
-    const accountValue = (manager?.account_value ?? 0) / 10 ** dusdcDecimals;
-    const openExposure = (manager?.open_exposure ?? 0) / 10 ** dusdcDecimals;
-    const unrealized = (manager?.unrealized_pnl ?? 0) / 10 ** dusdcDecimals;
-    const realized = (manager?.realized_pnl ?? 0) / 10 ** dusdcDecimals;
 
     // Spot aggregates
     const totalYesValue = positions.reduce(
@@ -179,7 +168,7 @@ export default function PortfolioPage({ markets }: Props) {
                 </span>
             </div>
 
-            {!managerId && !predictLoading && (
+            {managerCards.length === 0 && !predictLoading && (
                 <div
                     className="empty-state"
                     style={{ padding: '24px 20px', marginBottom: 24 }}
@@ -211,8 +200,40 @@ export default function PortfolioPage({ markets }: Props) {
                 </div>
             )}
 
-            {managerId && (
-                <>
+            {managerCards.length > 1 && (
+                <div
+                    style={{
+                        fontSize: '0.7rem',
+                        color: 'var(--text-muted)',
+                        fontFamily: 'Space Mono, monospace',
+                        letterSpacing: '0.04em',
+                        marginBottom: 12,
+                    }}
+                >
+                    Found {managerCards.length} managers for this wallet —
+                    each renders separately below.
+                </div>
+            )}
+
+            {managerCards.map((card) => {
+                const manager = card.summary;
+                const managerId = card.id;
+                const openPredictPositions = card.positions.filter(
+                    (p) => p.open_quantity > 0
+                );
+                const managerBalance =
+                    (manager?.trading_balance ?? 0) / 10 ** dusdcDecimals;
+                const accountValue =
+                    (manager?.account_value ?? 0) / 10 ** dusdcDecimals;
+                const openExposure =
+                    (manager?.open_exposure ?? 0) / 10 ** dusdcDecimals;
+                const unrealized =
+                    (manager?.unrealized_pnl ?? 0) / 10 ** dusdcDecimals;
+                const realized =
+                    (manager?.realized_pnl ?? 0) / 10 ** dusdcDecimals;
+                const withdrawing = withdrawingId === managerId;
+                return (
+                <div key={managerId} style={{ marginBottom: 32 }}>
                     <div className="stat-strip" style={{ marginBottom: 16 }}>
                         <div className="stat-cell">
                             <div className="stat-cell-label">Account Value</div>
@@ -291,12 +312,12 @@ export default function PortfolioPage({ markets }: Props) {
                                 style={{ width: 'auto', margin: 0 }}
                                 disabled={withdrawing}
                                 onClick={async () => {
-                                    if (!acct || !managerId || !manager) return;
+                                    if (!acct || !manager) return;
                                     const amount = BigInt(
                                         manager.trading_balance ?? 0
                                     );
                                     if (amount <= 0n) return;
-                                    setWithdrawing(true);
+                                    setWithdrawingId(managerId);
                                     setWithdrawMsg(null);
                                     try {
                                         const tx = buildWithdrawTx(
@@ -314,7 +335,15 @@ export default function PortfolioPage({ markets }: Props) {
                                         const fresh = await getManagerSummary(
                                             managerId
                                         ).catch(() => null);
-                                        if (fresh) setManager(fresh);
+                                        if (fresh) {
+                                            setManagerCards((prev) =>
+                                                prev.map((c) =>
+                                                    c.id === managerId
+                                                        ? { ...c, summary: fresh }
+                                                        : c
+                                                )
+                                            );
+                                        }
                                         setWithdrawMsg(
                                             `Withdrew $${(Number(amount) / 10 ** dusdcDecimals).toFixed(2)} to wallet`
                                         );
@@ -327,7 +356,7 @@ export default function PortfolioPage({ markets }: Props) {
                                                     : String(e))
                                         );
                                     } finally {
-                                        setWithdrawing(false);
+                                        setWithdrawingId(null);
                                     }
                                 }}
                             >
@@ -547,8 +576,9 @@ export default function PortfolioPage({ markets }: Props) {
                             })}
                         </div>
                     )}
-                </>
-            )}
+                </div>
+                );
+            })}
 
             {/* ── SPOT MARKETS ───────────────────────────────────────── */}
             <div
