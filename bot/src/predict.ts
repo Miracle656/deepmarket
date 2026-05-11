@@ -1,0 +1,176 @@
+// DeepBook Predict server client + types.
+// Mirrors the frontend's `src/lib/predict.ts` shape.
+
+import { CONFIG } from './config.js';
+
+export type OracleStatus = 'inactive' | 'active' | 'pending' | 'settled';
+
+export interface OracleSummary {
+    predict_id: string;
+    oracle_id: string;
+    oracle_cap_id: string;
+    underlying_asset: string;
+    expiry: number;
+    min_strike: number;
+    tick_size: number;
+    status: OracleStatus;
+    activated_at: number;
+    settlement_price: number | null;
+    settled_at: number | null;
+    created_checkpoint: number;
+}
+
+export interface PriceUpdate {
+    spot: number;
+    forward: number;
+    onchain_timestamp: number;
+}
+
+export interface OracleState {
+    oracle: OracleSummary;
+    latest_price: PriceUpdate | null;
+    latest_svi: unknown;
+    ask_bounds: unknown;
+}
+
+export interface ManagerSummary {
+    manager_id: string;
+    owner: string;
+    trading_balance: number;
+    open_exposure: number;
+    realized_pnl: number;
+    unrealized_pnl: number;
+    account_value: number;
+    open_positions: number;
+    awaiting_settlement_positions: number;
+}
+
+export type PositionStatus =
+    | 'open'
+    | 'won'
+    | 'lost'
+    | 'redeemable'
+    | 'awaiting_settlement';
+
+export interface Position {
+    predict_id: string;
+    manager_id: string;
+    oracle_id: string;
+    underlying_asset: string;
+    expiry: number;
+    strike: number;
+    is_up: boolean;
+    open_quantity: number;
+    open_cost_basis: number;
+    realized_pnl: number;
+    unrealized_pnl: number;
+    mark_value: number;
+    status: PositionStatus;
+}
+
+interface ManagerListEntry {
+    manager_id: string;
+    owner: string;
+    [k: string]: unknown;
+}
+
+async function fetchJson<T>(path: string): Promise<T> {
+    const res = await fetch(`${CONFIG.PREDICT_SERVER_URL}${path}`);
+    if (!res.ok) {
+        throw new Error(`Predict server ${res.status}: ${path}`);
+    }
+    return (await res.json()) as T;
+}
+
+export async function listActiveOracles(): Promise<OracleSummary[]> {
+    const all = await fetchJson<OracleSummary[]>(
+        `/predicts/${CONFIG.PREDICT_OBJECT_ID}/oracles`
+    );
+    return all.filter((o) => o.status === 'active' || o.status === 'pending');
+}
+
+export async function getOracleState(oracleId: string): Promise<OracleState> {
+    return fetchJson<OracleState>(`/oracles/${oracleId}/state`);
+}
+
+export async function getOracleStateBatch(
+    oracleIds: string[]
+): Promise<Map<string, OracleState>> {
+    const results = await Promise.allSettled(
+        oracleIds.map((id) => getOracleState(id))
+    );
+    const map = new Map<string, OracleState>();
+    for (let i = 0; i < oracleIds.length; i++) {
+        const r = results[i];
+        const id = oracleIds[i];
+        if (r && r.status === 'fulfilled' && id) {
+            map.set(id, r.value);
+        }
+    }
+    return map;
+}
+
+export async function findManagerByOwner(address: string): Promise<string | null> {
+    try {
+        const all = await fetchJson<ManagerListEntry[]>(`/managers`);
+        const lower = address.toLowerCase();
+        for (const m of all) {
+            if (m.owner?.toLowerCase() === lower && m.manager_id) {
+                return m.manager_id;
+            }
+        }
+        return null;
+    } catch {
+        return null;
+    }
+}
+
+export async function getManagerSummary(
+    managerId: string
+): Promise<ManagerSummary | null> {
+    try {
+        return await fetchJson<ManagerSummary>(`/managers/${managerId}/summary`);
+    } catch {
+        return null;
+    }
+}
+
+export async function getManagerPositions(
+    managerId: string
+): Promise<Position[]> {
+    try {
+        return await fetchJson<Position[]>(
+            `/managers/${managerId}/positions/summary`
+        );
+    } catch {
+        return [];
+    }
+}
+
+const RAW_TO_USD = 1_000_000_000;
+const DUSDC_SCALE = 1_000_000;
+
+export function strikeToUsd(rawStrike: number): number {
+    return rawStrike / RAW_TO_USD;
+}
+
+export function spotToUsd(rawSpot: number): number {
+    return rawSpot / RAW_TO_USD;
+}
+
+export function dusdcToUsd(raw: number): number {
+    return raw / DUSDC_SCALE;
+}
+
+export function formatExpiry(expiryMs: number): string {
+    const d = new Date(expiryMs);
+    const now = Date.now();
+    const diff = expiryMs - now;
+    if (diff < 0) {
+        return `${d.toLocaleString()} (settled)`;
+    }
+    if (diff < 60_000) return `in ${Math.floor(diff / 1000)}s`;
+    if (diff < 3_600_000) return `in ${Math.floor(diff / 60_000)}m`;
+    if (diff < 86_400_000) return `in ${Math.floor(diff / 3_600_000)}h`;
+    return d.toLocaleString();
+}
