@@ -4,6 +4,7 @@
 // Server provides indexed market state, oracle list, manager portfolios, vault summaries.
 // Use Sui RPC for confirmation-critical reads around wallet flows.
 
+import type { SuiObjectChange } from '@mysten/sui/client';
 import { CONFIG } from './config';
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -52,11 +53,60 @@ export interface OracleState {
     ask_bounds: unknown;
 }
 
+export interface ManagerBalance {
+    quote_asset: string;
+    balance: number;
+}
+
 export interface ManagerSummary {
     manager_id: string;
     owner: string;
-    quote_balance: number;
+    balances: ManagerBalance[];
+    trading_balance: number;
+    open_exposure: number;
+    redeemable_value: number;
+    realized_pnl: number;
+    unrealized_pnl: number;
+    account_value: number;
+    open_positions: number;
+    awaiting_settlement_positions: number;
+}
+
+export interface ManagerListEntry {
+    manager_id: string;
+    owner: string;
+    digest: string;
+    checkpoint: number;
+    checkpoint_timestamp_ms: number;
     [key: string]: unknown;
+}
+
+export type PositionStatus = 'open' | 'won' | 'lost' | 'awaiting_settlement';
+
+export interface Position {
+    predict_id: string;
+    manager_id: string;
+    quote_asset: string;
+    oracle_id: string;
+    underlying_asset: string;
+    expiry: number;
+    strike: number;
+    is_up: boolean;
+    minted_quantity: number;
+    redeemed_quantity: number;
+    open_quantity: number;
+    total_cost: number;
+    total_payout: number;
+    realized_pnl: number;
+    unrealized_pnl: number;
+    open_cost_basis: number;
+    average_entry_price: number;
+    average_exit_price: number | null;
+    mark_price: number;
+    mark_value: number;
+    status: PositionStatus;
+    first_minted_at: number;
+    last_activity_at: number;
 }
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -104,8 +154,27 @@ export async function getManagerSummary(managerId: string): Promise<ManagerSumma
     return fetchJson<ManagerSummary>(`/managers/${managerId}/summary`);
 }
 
-export async function getManagerPositions(managerId: string): Promise<unknown> {
-    return fetchJson(`/managers/${managerId}/positions/summary`);
+export async function getManagerPositions(managerId: string): Promise<Position[]> {
+    return fetchJson<Position[]>(`/managers/${managerId}/positions/summary`);
+}
+
+/**
+ * Find an existing PredictManager owned by `address` by scanning /managers.
+ * Cold-start fallback when the localStorage cache is empty.
+ */
+export async function findManagerByOwner(address: string): Promise<string | null> {
+    try {
+        const all = await fetchJson<ManagerListEntry[]>(`/managers`);
+        const lower = address.toLowerCase();
+        for (const m of all) {
+            if (m.owner?.toLowerCase() === lower && m.manager_id) {
+                return m.manager_id;
+            }
+        }
+        return null;
+    } catch {
+        return null;
+    }
 }
 
 export async function getVaultSummary(): Promise<unknown> {
@@ -154,5 +223,75 @@ export function statusColor(status: OracleStatus): string {
             return 'var(--text-muted)';
         default:
             return 'var(--text-secondary)';
+    }
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// PredictManager lookup (localStorage cache + tx-effects extraction)
+// ──────────────────────────────────────────────────────────────────────────
+
+const MANAGER_TYPE = `${CONFIG.PREDICT_PACKAGE_ID}::predict_manager::PredictManager`;
+const managerStorageKey = (address: string) =>
+    `predict.manager.${address.toLowerCase()}`;
+
+/** Read the cached PredictManager id for `address`, if any. */
+export function getCachedManagerId(address: string): string | null {
+    try {
+        return localStorage.getItem(managerStorageKey(address));
+    } catch {
+        return null;
+    }
+}
+
+export function setCachedManagerId(address: string, managerId: string): void {
+    try {
+        localStorage.setItem(managerStorageKey(address), managerId);
+    } catch {
+        // ignore quota / disabled storage
+    }
+}
+
+export function clearCachedManagerId(address: string): void {
+    try {
+        localStorage.removeItem(managerStorageKey(address));
+    } catch {
+        // ignore
+    }
+}
+
+/**
+ * Find a freshly-created PredictManager id in `tx.objectChanges`.
+ * Returns null if no created PredictManager is present.
+ */
+export function extractManagerIdFromChanges(
+    changes: SuiObjectChange[] | null | undefined,
+): string | null {
+    if (!changes) return null;
+    for (const ch of changes) {
+        if (ch.type === 'created' && ch.objectType === MANAGER_TYPE) {
+            return ch.objectId;
+        }
+    }
+    return null;
+}
+
+/**
+ * Validate a cached manager id by hitting the server. Clears the cache and
+ * returns null on 404; returns the id unchanged on any other outcome (server
+ * errors fail open so users keep their cached value if the indexer is down).
+ */
+export async function validateManagerId(
+    address: string,
+    managerId: string,
+): Promise<string | null> {
+    try {
+        const res = await fetch(`${SERVER}/managers/${managerId}/summary`);
+        if (res.status === 404) {
+            clearCachedManagerId(address);
+            return null;
+        }
+        return managerId;
+    } catch {
+        return managerId;
     }
 }

@@ -16,10 +16,34 @@ import {
     useState,
     type FormEvent,
 } from 'react';
-import { useCurrentAccount, useSignAndExecuteTransaction } from '@mysten/dapp-kit';
-import { Send, MessageCircle, Lock, RefreshCw, Plus, UserPlus, X } from 'lucide-react';
-import { useMessagingClient, useMessagingSigner } from '../contexts/MessagingClientContext';
+import { useCurrentAccount, useSignAndExecuteTransaction, useSuiClient } from '@mysten/dapp-kit';
+import { Send, MessageCircle, Lock, RefreshCw, Plus, UserPlus, X, Zap, ShieldCheck } from 'lucide-react';
+import { permissionTypes } from '@mysten/sui-groups';
+import {
+    useMessagingClient,
+    useMessagingSigner,
+    useDelegateMessagingClient,
+    useDelegateSigner,
+    useDelegateSession,
+} from '../contexts/MessagingClientContext';
 import { marketUuidFor } from '../lib/messaging';
+import {
+    clearDelegate,
+    hasGrantedDelegate,
+    markDelegateGranted,
+    unmarkDelegateGranted,
+} from '../lib/chat-session';
+
+// Resolve the groups package's admin types at module load. Two admin types
+// exist on a PermissionedGroup:
+//   - PermissionsAdmin           — manages CORE perms defined in permissioned_groups
+//   - ExtensionPermissionsAdmin  — manages EXTENSION perms (e.g. MessagingReader)
+// Granting messaging perms (the ones our delegate needs) requires
+// ExtensionPermissionsAdmin, not just PermissionsAdmin.
+const GROUPS_PKG = '0xba8a26d42bc8b5e5caf4dac2a0f7544128d5dd9b4614af88eec1311ade11de79';
+const PERMISSIONS_ADMIN = permissionTypes(GROUPS_PKG).PermissionsAdmin;
+const EXTENSION_PERMISSIONS_ADMIN =
+    permissionTypes(GROUPS_PKG).ExtensionPermissionsAdmin;
 
 interface Props {
     marketObjectId: string;
@@ -41,6 +65,7 @@ type Status =
     | { kind: 'no-wallet' }
     | { kind: 'no-group' }
     | { kind: 'creating-group' }
+    | { kind: 'needs-autosign' }
     | { kind: 'loading' }
     | { kind: 'ready' }
     | { kind: 'error'; message: string };
@@ -71,8 +96,16 @@ function mergeMessage(prev: ChatMessage[], incoming: ChatMessage): ChatMessage[]
 
 export default function MarketChat({ marketObjectId, marketTitle }: Props) {
     const account = useCurrentAccount();
-    const client = useMessagingClient();
-    const signer = useMessagingSigner();
+    const sui = useSuiClient();
+    const walletClient = useMessagingClient();
+    const walletSigner = useMessagingSigner();
+    const delegateClientFromCtx = useDelegateMessagingClient();
+    const delegateSigner = useDelegateSigner();
+    const {
+        hasDelegate,
+        ensureDelegate,
+        delegateAddress: delegateAddr,
+    } = useDelegateSession();
     const { mutateAsync: signAndExecute } = useSignAndExecuteTransaction();
 
     const [status, setStatus] = useState<Status>({ kind: 'no-wallet' });
@@ -84,12 +117,50 @@ export default function MarketChat({ marketObjectId, marketTitle }: Props) {
     const [inviteAddr, setInviteAddr] = useState('');
     const [inviting, setInviting] = useState(false);
     const [inviteError, setInviteError] = useState<string | null>(null);
+    const [delegateGranted, setDelegateGranted] = useState(false);
+    const [provisioning, setProvisioning] = useState(false);
+    const [provisionError, setProvisionError] = useState<string | null>(null);
+    // User explicitly chose "popup per signature" instead of auto-sign.
+    // Sticky for the session; relevant only for the gating screen.
+    const [useWalletForReads, setUseWalletForReads] = useState(false);
+    // Two-step confirmation for the destructive Reset action — avoids the
+    // native window.confirm dialog while still preventing fat-fingers.
+    const [resetArmed, setResetArmed] = useState(false);
 
     // Deterministic UUID derived from the market objectId — every wallet
     // computes the same value, so chat is self-discoverable per market.
     const groupUuid = marketUuidFor(marketObjectId);
     const lastOrderRef = useRef<number | undefined>(undefined);
     const scrollerRef = useRef<HTMLDivElement>(null);
+
+    // Track whether the delegate has been granted permissions on THIS group.
+    // Provisioned-once-per-wallet, granted-once-per-group.
+    useEffect(() => {
+        if (!account?.address) {
+            setDelegateGranted(false);
+            return;
+        }
+        const granted = hasGrantedDelegate(account.address, groupUuid);
+        console.info(
+            '[autosign] grant-state check on mount/refresh. granted=',
+            granted,
+            'wallet=',
+            account.address,
+            'groupUuid=',
+            groupUuid
+        );
+        setDelegateGranted(granted);
+    }, [account?.address, groupUuid]);
+
+    const autoSignActive = hasDelegate && delegateGranted && !!delegateSigner;
+    // Use delegate everywhere it's been authorized; fall back to wallet.
+    const activeClient = autoSignActive
+        ? delegateClientFromCtx ?? walletClient
+        : walletClient;
+    const activeSigner = autoSignActive ? delegateSigner : walletSigner;
+    // Aliases kept so the rest of the component reads cleanly.
+    const client = activeClient;
+    const signer = activeSigner;
 
     // Update lastOrderRef whenever messages change.
     useEffect(() => {
@@ -99,20 +170,32 @@ export default function MarketChat({ marketObjectId, marketTitle }: Props) {
     }, [messages]);
 
     // ── status reconciliation ───────────────────────────────
+    // Gate reads until the user picks a signing mode for this group. If
+    // auto-sign is already on (delegate granted), reads happen silently via
+    // delegate. Otherwise we render an opt-in card; reading would otherwise
+    // burn 3 wallet popups before the user even sees the option.
     useEffect(() => {
-        if (!account || !client || !signer) {
+        if (!account || !walletClient) {
             setStatus({ kind: 'no-wallet' });
+            return;
+        }
+        const canRead = autoSignActive || useWalletForReads;
+        if (!canRead) {
+            setStatus({ kind: 'needs-autosign' });
             return;
         }
         setStatus((prev) =>
             prev.kind === 'creating-group' ? prev : { kind: 'loading' }
         );
-    }, [account, client, signer, groupUuid]);
+    }, [account, walletClient, autoSignActive, useWalletForReads, groupUuid]);
 
     // ── load initial messages ───────────────────────────────
     useEffect(() => {
         if (!client || !signer) return;
         if (status.kind === 'creating-group') return;
+        if (status.kind === 'needs-autosign') return;
+        // Skip reads until the user has explicitly chosen a signing mode.
+        if (!autoSignActive && !useWalletForReads) return;
         let cancelled = false;
         setMessages([]);
         lastOrderRef.current = undefined;
@@ -144,11 +227,12 @@ export default function MarketChat({ marketObjectId, marketTitle }: Props) {
         return () => {
             cancelled = true;
         };
-    }, [client, signer, groupUuid, status.kind]);
+    }, [client, signer, groupUuid, status.kind, autoSignActive, useWalletForReads]);
 
     // ── live subscription ───────────────────────────────────
     useEffect(() => {
         if (!client || !signer || !groupUuid || status.kind !== 'ready') return;
+        if (!autoSignActive && !useWalletForReads) return;
 
         const controller = new AbortController();
         (async () => {
@@ -204,45 +288,132 @@ export default function MarketChat({ marketObjectId, marketTitle }: Props) {
                 setInviteError('Invalid Sui address (expected 0x + 64 hex chars).');
                 return;
             }
-            if (!client) return;
+            if (!walletClient) return;
             setInviting(true);
-            try {
-                const groupId = client.messaging.derive.groupId({
-                    uuid: groupUuid,
-                });
-                const perms = [
-                    client.messaging.bcs.MessagingReader.name,
-                    client.messaging.bcs.MessagingSender.name,
-                    client.messaging.bcs.MessagingEditor.name,
-                    client.messaging.bcs.MessagingDeleter.name,
-                ];
-                const tx = client.groups.tx.grantPermissions({
+
+            const groupId = walletClient.messaging.derive.groupId({
+                uuid: groupUuid,
+            });
+            const fullPerms = [
+                walletClient.messaging.bcs.MessagingReader.name,
+                walletClient.messaging.bcs.MessagingSender.name,
+                walletClient.messaging.bcs.MessagingEditor.name,
+                walletClient.messaging.bcs.MessagingDeleter.name,
+                // PermissionsAdmin manages core perms (group-level ops).
+                // ExtensionPermissionsAdmin is the one actually required to
+                // grant Messaging perms — this is what lets the invitee later
+                // grant their own auto-sign delegate.
+                PERMISSIONS_ADMIN,
+                EXTENSION_PERMISSIONS_ADMIN,
+            ];
+
+            // Grant full perms; on vec_set::insert abort (duplicate
+            // permission, meaning the member already has at least one of
+            // these), fall back to granting ONLY PermissionsAdmin so
+            // existing members can be promoted without re-granting the four
+            // perms they already have.
+            const tryGrant = async (perms: string[]) => {
+                const tx = walletClient.groups.tx.grantPermissions({
                     groupId,
                     member: addr,
                     permissionTypes: perms,
                 });
-                await signAndExecute({ transaction: tx });
-                setInviteAddr('');
-                setInviteOpen(false);
+                const res = await signAndExecute({ transaction: tx });
+                const txRes = await sui.waitForTransaction({
+                    digest: res.digest,
+                    options: { showEffects: true },
+                });
+                const status =
+                    (txRes as { effects?: { status?: { status?: string; error?: string } } })
+                        .effects?.status;
+                if (status?.status !== 'success') {
+                    throw new Error(status?.error ?? 'Grant tx aborted');
+                }
+            };
+
+            // Retry chain: full → admin pair → ExtensionPermissionsAdmin only.
+            // Each step skips on vec_set::insert (duplicate perm) and tries
+            // the next narrower set. Worst case is 3 wallet popups but the
+            // final state has the member with both admin types so they can
+            // run Enable auto-sign themselves.
+            const attempts: { label: string; perms: string[] }[] = [
+                { label: 'full', perms: fullPerms },
+                {
+                    label: 'admin-pair',
+                    perms: [PERMISSIONS_ADMIN, EXTENSION_PERMISSIONS_ADMIN],
+                },
+                {
+                    label: 'extension-admin-only',
+                    perms: [EXTENSION_PERMISSIONS_ADMIN],
+                },
+            ];
+            let success = false;
+            let lastError: unknown = null;
+            try {
+                for (const step of attempts) {
+                    try {
+                        console.info(
+                            `[invite] attempt "${step.label}" (${step.perms.length} perms)`
+                        );
+                        await tryGrant(step.perms);
+                        console.info(
+                            `[invite] attempt "${step.label}" succeeded`
+                        );
+                        success = true;
+                        break;
+                    } catch (err) {
+                        lastError = err;
+                        const m =
+                            err instanceof Error ? err.message : String(err);
+                        console.warn(
+                            `[invite] attempt "${step.label}" failed:`,
+                            m
+                        );
+                        const isDup = /vec_set::insert/i.test(m);
+                        if (!isDup) throw err;
+                        // fall through to next narrower step
+                    }
+                }
+                if (success) {
+                    setInviteAddr('');
+                    setInviteOpen(false);
+                } else {
+                    // All attempts hit vec_set::insert — member already has
+                    // every perm we wanted to grant. Treat as success-equivalent.
+                    setInviteAddr('');
+                    setInviteOpen(false);
+                    setInviteError(
+                        'Member already has full permissions. They should be able to enable auto-sign now — ask them to refresh.'
+                    );
+                }
             } catch (e) {
+                void lastError;
+                const msg = e instanceof Error ? e.message : String(e);
+                console.error('[invite] final error:', msg);
+                const lacksAdmin =
+                    /permissioned_group::grant_permission/.test(msg) &&
+                    /abort code: 0/i.test(msg) &&
+                    !/vec_set::insert/i.test(msg);
                 setInviteError(
-                    e instanceof Error ? e.message : 'Failed to invite member'
+                    lacksAdmin
+                        ? `You don't have admin rights on this chat. Connected wallet: ${account?.address.slice(0, 12)}…`
+                        : `Invite failed: ${msg}`
                 );
             } finally {
                 setInviting(false);
             }
         },
-        [client, inviteAddr, groupUuid, signAndExecute]
+        [walletClient, inviteAddr, groupUuid, signAndExecute, sui]
     );
 
     const handleCreateGroup = useCallback(async () => {
-        if (!client) return;
+        if (!walletClient) return;
         setStatus({ kind: 'creating-group' });
         try {
             const tx = new (
                 await import('@mysten/sui/transactions')
             ).Transaction();
-            await client.messaging.call.createAndShareGroup({
+            await walletClient.messaging.call.createAndShareGroup({
                 uuid: groupUuid,
                 name: marketTitle.slice(0, 80),
             })(tx);
@@ -255,7 +426,7 @@ export default function MarketChat({ marketObjectId, marketTitle }: Props) {
                 message: e instanceof Error ? e.message : 'Failed to create chat',
             });
         }
-    }, [client, groupUuid, marketTitle, signAndExecute]);
+    }, [walletClient, groupUuid, marketTitle, signAndExecute]);
 
     const handleSend = useCallback(
         async (e: FormEvent) => {
@@ -271,11 +442,16 @@ export default function MarketChat({ marketObjectId, marketTitle }: Props) {
                     text: trimmed,
                 });
                 // Optimistic local append; subscription will replace it.
+                // senderAddress matches the signer that actually authored the
+                // message (delegate when auto-sign is active, else wallet).
+                const optimisticSender = autoSignActive
+                    ? delegateAddr ?? account!.address
+                    : account!.address;
                 const optimistic: ChatMessage = {
                     messageId,
                     order: (lastOrderRef.current ?? 0) + 1,
                     text: trimmed,
-                    senderAddress: account!.address,
+                    senderAddress: optimisticSender,
                     createdAt: Date.now() / 1000,
                     syncStatus: 'SYNC_PENDING',
                 };
@@ -290,8 +466,94 @@ export default function MarketChat({ marketObjectId, marketTitle }: Props) {
                 setSending(false);
             }
         },
-        [draft, client, signer, groupUuid, sending, account]
+        [draft, client, signer, groupUuid, sending, account, autoSignActive, delegateAddr]
     );
+
+    // ── delegate provisioning ──────────────────────────────────
+    // One-time per group: grants the user's chat delegate full member perms
+    // on this group's on-chain object, after which the delegate signs every
+    // subsequent message with no wallet popups.
+    const handleEnableAutoSign = useCallback(async () => {
+        if (!account || !walletClient) return;
+        setProvisioning(true);
+        setProvisionError(null);
+        try {
+            const keypair = ensureDelegate();
+            if (!keypair) throw new Error('Could not provision delegate keypair');
+            const delegateAddrLocal = keypair.getPublicKey().toSuiAddress();
+
+            const groupId = walletClient.messaging.derive.groupId({
+                uuid: groupUuid,
+            });
+            const perms = [
+                walletClient.messaging.bcs.MessagingReader.name,
+                walletClient.messaging.bcs.MessagingSender.name,
+                walletClient.messaging.bcs.MessagingEditor.name,
+                walletClient.messaging.bcs.MessagingDeleter.name,
+            ];
+            const tx = walletClient.groups.tx.grantPermissions({
+                groupId,
+                member: delegateAddrLocal,
+                permissionTypes: perms,
+            });
+            const res = await signAndExecute({ transaction: tx });
+            const txRes = await sui.waitForTransaction({
+                digest: res.digest,
+                options: { showEffects: true },
+            });
+            // Move aborts don't throw — they return with effects.status.error.
+            // Marking the grant as successful when the tx aborted strands the
+            // delegate as a non-member; future reads 403 until cleared.
+            const status =
+                (txRes as { effects?: { status?: { status?: string; error?: string } } })
+                    .effects?.status;
+            if (status?.status !== 'success') {
+                throw new Error(
+                    status?.error
+                        ? `Grant tx aborted on chain: ${status.error}`
+                        : 'Grant tx failed on chain'
+                );
+            }
+            markDelegateGranted(account.address, groupUuid);
+            console.info(
+                '[autosign] grant succeeded; persisted to localStorage. wallet=',
+                account.address,
+                'groupUuid=',
+                groupUuid
+            );
+            setDelegateGranted(true);
+        } catch (e) {
+            const msg = e instanceof Error ? e.message : String(e);
+            // vec_set::insert abort: the delegate already has these perms on
+            // chain (from a prior successful grant the relayer didn't see).
+            // Trust the chain state — mark granted locally so we stop gating.
+            const alreadyOnChain = /vec_set::insert/i.test(msg);
+            if (alreadyOnChain && account) {
+                markDelegateGranted(account.address, groupUuid);
+                console.info(
+                    '[autosign] vec_set duplicate caught; marking granted. wallet=',
+                    account.address,
+                    'groupUuid=',
+                    groupUuid
+                );
+                setDelegateGranted(true);
+                setProvisionError(null);
+                return;
+            }
+            // Abort in grant_permission (NOT vec_set::insert) typically means
+            // the caller doesn't hold PermissionsAdmin on this group.
+            const lacksAdmin =
+                /permissioned_group::grant_permission/.test(msg) &&
+                /abort code: 0/i.test(msg);
+            setProvisionError(
+                lacksAdmin
+                    ? 'This wallet has read/send permission on the chat but no admin rights to grant a delegate. Ask the chat creator to re-invite this address — the latest invite flow includes admin rights.'
+                    : `Failed to enable auto-sign: ${msg}`
+            );
+        } finally {
+            setProvisioning(false);
+        }
+    }, [account, walletClient, ensureDelegate, groupUuid, signAndExecute, sui]);
 
     // ── render ──────────────────────────────────────────────
     return (
@@ -303,6 +565,19 @@ export default function MarketChat({ marketObjectId, marketTitle }: Props) {
                 </div>
                 <div className="chat-subtitle">
                     Sui Stack Messaging · Walrus + Seal
+                    {account && (
+                        <span
+                            style={{
+                                marginLeft: 10,
+                                fontFamily: 'Space Mono, monospace',
+                                fontSize: 10,
+                                opacity: 0.55,
+                            }}
+                            title={`wallet: ${account.address}\ngroupUuid: ${groupUuid}${delegateAddr ? `\ndelegate: ${delegateAddr}` : ''}`}
+                        >
+                            · {shortAddr(account.address)} → {groupUuid.slice(0, 8)}…
+                        </span>
+                    )}
                 </div>
                 {status.kind === 'ready' && (
                     <>
@@ -398,6 +673,56 @@ export default function MarketChat({ marketObjectId, marketTitle }: Props) {
                     </div>
                 )}
 
+                {status.kind === 'needs-autosign' && (
+                    <div className="chat-empty chat-autosign-gate">
+                        <Zap size={28} />
+                        <div className="chat-empty-title">
+                            Enable auto-sign for this chat?
+                        </div>
+                        <div className="chat-empty-desc">
+                            One wallet signature grants a local delegate
+                            permission to sign on your behalf. After that, every
+                            read and message is signed silently — no popups.
+                        </div>
+                        <div className="chat-autosign-actions">
+                            <button
+                                type="button"
+                                className="btn btn-yes"
+                                onClick={handleEnableAutoSign}
+                                disabled={provisioning}
+                            >
+                                {provisioning ? (
+                                    <>
+                                        <RefreshCw size={14} className="spin" />
+                                        &nbsp;Provisioning…
+                                    </>
+                                ) : (
+                                    <>
+                                        <Zap size={14} />
+                                        &nbsp;Enable auto-sign · 1 popup
+                                    </>
+                                )}
+                            </button>
+                            <button
+                                type="button"
+                                className="chat-autosign-skip"
+                                onClick={() => setUseWalletForReads(true)}
+                                disabled={provisioning}
+                            >
+                                or sign each request manually
+                            </button>
+                        </div>
+                        {provisionError && (
+                            <div
+                                className="alert alert-error"
+                                style={{ marginTop: 12, fontSize: 12 }}
+                            >
+                                {provisionError}
+                            </div>
+                        )}
+                    </div>
+                )}
+
                 {status.kind === 'loading' && (
                     <div className="chat-empty">
                         <RefreshCw size={32} className="spin" />
@@ -413,6 +738,27 @@ export default function MarketChat({ marketObjectId, marketTitle }: Props) {
                     <div className="chat-empty">
                         <div className="chat-empty-title">Chat error</div>
                         <div className="chat-empty-desc">{status.message}</div>
+                        {/* If auto-sign is on but reads fail (e.g. stale grant
+                            from a previously-aborted tx), let the user reset
+                            and re-trigger the gate card. */}
+                        {autoSignActive && account && (
+                            <button
+                                type="button"
+                                className="btn btn-yes"
+                                style={{ marginTop: 14 }}
+                                onClick={() => {
+                                    unmarkDelegateGranted(
+                                        account.address,
+                                        groupUuid
+                                    );
+                                    setDelegateGranted(false);
+                                    setUseWalletForReads(false);
+                                    setStatus({ kind: 'needs-autosign' });
+                                }}
+                            >
+                                Reset auto-sign for this chat
+                            </button>
+                        )}
                     </div>
                 )}
 
@@ -430,7 +776,12 @@ export default function MarketChat({ marketObjectId, marketTitle }: Props) {
                     messages
                         .filter((m) => !m.isDeleted)
                         .map((m) => {
-                            const mine = m.senderAddress === account?.address;
+                            const sender = m.senderAddress?.toLowerCase();
+                            const wallet = account?.address.toLowerCase();
+                            const delegate = delegateAddr?.toLowerCase();
+                            const mine =
+                                sender === wallet ||
+                                (!!delegate && sender === delegate);
                             return (
                                 <div
                                     key={m.messageId}
@@ -455,6 +806,79 @@ export default function MarketChat({ marketObjectId, marketTitle }: Props) {
                             );
                         })}
             </div>
+
+            {status.kind === 'ready' && (
+                <div className="chat-autosign-row">
+                    {autoSignActive ? (
+                        <button
+                            type="button"
+                            className={`chat-autosign-pill on ${resetArmed ? 'armed' : ''}`}
+                            onClick={() => {
+                                if (!account) return;
+                                if (!resetArmed) {
+                                    setResetArmed(true);
+                                    window.setTimeout(
+                                        () => setResetArmed(false),
+                                        3500
+                                    );
+                                    return;
+                                }
+                                // Rotate the delegate keypair so the new grant
+                                // tx targets a fresh address — avoids
+                                // vec_set::insert aborts when re-enabling.
+                                clearDelegate(account.address);
+                                unmarkDelegateGranted(
+                                    account.address,
+                                    groupUuid
+                                );
+                                setDelegateGranted(false);
+                                setUseWalletForReads(false);
+                                setResetArmed(false);
+                                setStatus({ kind: 'needs-autosign' });
+                                // Force a small refresh so the context picks
+                                // up the cleared delegate state.
+                                window.setTimeout(
+                                    () => window.location.reload(),
+                                    50
+                                );
+                            }}
+                            title="Auto-sign is on. Click twice to reset and rotate the delegate keypair (useful if reads are 403ing)."
+                        >
+                            <ShieldCheck size={12} />
+                            <span>
+                                {resetArmed
+                                    ? 'Click again to confirm reset'
+                                    : 'Auto-sign on · click to reset'}
+                            </span>
+                        </button>
+                    ) : (
+                        <button
+                            type="button"
+                            className="chat-autosign-pill off"
+                            onClick={handleEnableAutoSign}
+                            disabled={provisioning}
+                            title="One wallet popup grants this chat permission to sign on your behalf. After that, every message is signed silently by a local key."
+                        >
+                            {provisioning ? (
+                                <>
+                                    <RefreshCw size={12} className="spin" />
+                                    Provisioning…
+                                </>
+                            ) : (
+                                <>
+                                    <Zap size={12} />
+                                    Enable auto-sign · 1 tx, then no popups
+                                </>
+                            )}
+                        </button>
+                    )}
+                </div>
+            )}
+            {provisionError && status.kind === 'ready' && (
+                <div className="alert alert-error" style={{ margin: '0 14px 8px', fontSize: 12 }}>
+                    {provisionError}
+                </div>
+            )}
 
             <form className="chat-input" onSubmit={handleSend}>
                 <input

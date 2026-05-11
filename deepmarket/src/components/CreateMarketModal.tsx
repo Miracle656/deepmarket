@@ -292,10 +292,12 @@ export default function CreateMarketModal({ onCreated, onClose }: Props) {
                 )}
 
                 <div className="alert alert-info">
-                    {skipPools
-                        ? <>Markets created without pools support <strong>mint, resolve, redeem</strong> — and <strong>per-market chat</strong>. Skip pools while iterating; turn them on for the demo market.</>
-                        : <>Full creation requires <strong>1000 DEEP</strong> testnet tokens (500 DEEP × 2 pools). Make sure your wallet has them before continuing — pool creation cannot be retried with insufficient DEEP.</>
-                    }
+                    <span>
+                        {skipPools
+                            ? <>Markets created without pools support <strong>mint, resolve, redeem</strong> — and <strong>per-market chat</strong>. Skip pools while iterating; turn them on for the demo market.</>
+                            : <>Full creation requires <strong>1000 DEEP</strong> testnet tokens (500 DEEP × 2 pools). Make sure your wallet has them before continuing — pool creation cannot be retried with insufficient DEEP.</>
+                        }
+                    </span>
                 </div>
 
                 <div className="form-group">

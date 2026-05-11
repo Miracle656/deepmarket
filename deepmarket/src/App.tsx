@@ -246,7 +246,7 @@ function AppInner() {
             } />
 
             <Route path="/predict" element={<PredictPage />} />
-            <Route path="/predict/:oracleId" element={<PredictDetailPage />} />
+            <Route path="/predict/:oracleId" element={<PredictDetailPage theme={theme} />} />
             <Route path="/portfolio" element={<PortfolioPage markets={markets} />} />
 
             <Route path="/about" element={
