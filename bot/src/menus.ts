@@ -170,6 +170,10 @@ export interface BotTraderState {
     strategyOn: boolean;
     openPositionLines?: string[];
     recentTradeLines?: string[];
+    /** Lifetime fees this user has paid to the bot treasury, in USD. */
+    feesPaidUsd?: number;
+    /** Per-trade fee rate (basis points) — shown to make the fee visible. */
+    feeBps?: number;
 }
 
 export function botTraderMenu(state: BotTraderState): {
@@ -228,6 +232,11 @@ export function botTraderMenu(state: BotTraderState): {
         `Manager: \`${mgrShort}\``,
         `Strategy: ${state.strategyOn ? '🟢 ON' : '⚪ off'}`,
     ];
+    if (state.feeBps !== undefined && state.feeBps > 0) {
+        const feePct = (state.feeBps / 100).toFixed(2);
+        const paid = (state.feesPaidUsd ?? 0).toFixed(4);
+        lines.push(`Service fee: ${feePct}% per mint  ·  Paid lifetime $${paid}`);
+    }
     if (state.openPositionLines && state.openPositionLines.length) {
         lines.push('');
         lines.push('Open positions:');

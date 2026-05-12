@@ -71,6 +71,8 @@ function buildDepositMintTx(opts: {
     isUp: boolean;
     quantity: bigint;
     depositAmount: bigint;
+    /** Service fee in dUSDC base units, transferred to treasury. 0 to skip. */
+    serviceFee: bigint;
 }): Transaction {
     const tx = new Transaction();
     const manager = tx.object(opts.managerId);
@@ -108,6 +110,19 @@ function buildDepositMintTx(opts: {
             tx.object(CONFIG.CLOCK),
         ],
     });
+
+    // Service fee — sourced from the same wallet that paid the mint deposit.
+    // Bundled in the same PTB so either both the trade and the fee happen,
+    // or neither does. Atomic by design.
+    if (opts.serviceFee > 0n && CONFIG.BOT_TREASURY_ADDRESS) {
+        const feeCoin = tx.add(
+            coinWithBalance({ balance: opts.serviceFee, type: DUSDC })
+        );
+        tx.transferObjects(
+            [feeCoin],
+            tx.pure.address(CONFIG.BOT_TREASURY_ADDRESS)
+        );
+    }
 
     return tx;
 }
@@ -183,7 +198,9 @@ export async function getOrCreateUserManager(chatId: number): Promise<string> {
 
 /**
  * Mint a binary position for the user. Auto-deposits dUSDC from the user's
- * custodial wallet if the manager balance is below the position cost.
+ * custodial wallet if the manager balance is below the position cost. Also
+ * sends a small service fee to the treasury (atomically bundled into the
+ * same PTB so the trade and the fee succeed/fail together).
  */
 export async function mintBinary(
     chatId: number,
@@ -195,13 +212,19 @@ export async function mintBinary(
         quantity: bigint;
         depositAmount: bigint;
     }
-): Promise<{ digest: string }> {
+): Promise<{ digest: string; serviceFee: bigint }> {
     const managerId = await getOrCreateUserManager(chatId);
     const kp = await getUserKeypair(chatId);
     if (!kp) throw new Error('No custodial wallet for this chat');
     const sui = getSuiClient();
 
-    const tx = buildDepositMintTx({ ...opts, managerId });
+    // Service fee — bps of cover (quantity). E.g., 100 bps on $0.50 = $0.005.
+    const serviceFee =
+        CONFIG.BOT_TREASURY_ADDRESS && CONFIG.BOT_FEE_BPS > 0
+            ? (opts.quantity * BigInt(CONFIG.BOT_FEE_BPS)) / 10000n
+            : 0n;
+
+    const tx = buildDepositMintTx({ ...opts, managerId, serviceFee });
     const res = await sui.signAndExecuteTransaction({
         signer: kp,
         transaction: tx,
@@ -230,7 +253,15 @@ export async function mintBinary(
         quantity: Number(opts.quantity),
         digest: res.digest,
     });
-    return { digest: res.digest };
+    // Track lifetime fees per user for the bot menu display.
+    if (serviceFee > 0n) {
+        const sub = await getSubscription(chatId);
+        const prev = BigInt(sub?.botFeesPaid ?? 0);
+        await patchSubscription(chatId, {
+            botFeesPaid: Number(prev + serviceFee),
+        });
+    }
+    return { digest: res.digest, serviceFee };
 }
 
 /**

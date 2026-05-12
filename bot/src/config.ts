@@ -33,6 +33,12 @@ export const CONFIG = {
     STRATEGY_QTY_USD: Number(process.env.STRATEGY_QTY_USD ?? 0.5),
     STRATEGY_TICK_MS: Number(process.env.STRATEGY_TICK_MS ?? 60000),
 
+    // Service fee — bot charges a small dUSDC fee per mint, paid to a
+    // treasury address. Covers API + RPC + Walrus costs. Leave
+    // BOT_TREASURY_ADDRESS empty to disable.
+    BOT_TREASURY_ADDRESS: process.env.BOT_TREASURY_ADDRESS ?? '',
+    BOT_FEE_BPS: Number(process.env.BOT_FEE_BPS ?? 100), // 100 bps = 1%
+
     // Move package constants — must match the deployed Predict instance
     PREDICT_PACKAGE_ID:
         '0xf5ea2b3749c65d6e56507cc35388719aadb28f9cab873696a2f8687f5c785138',

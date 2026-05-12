@@ -45,6 +45,8 @@ export interface Subscription {
     strategyEnabled?: boolean;
     /** Recent trade activity for the /strategy menu. */
     botTrades?: BotTrade[];
+    /** Lifetime dUSDC fees paid to the bot treasury, in base units. */
+    botFeesPaid?: number;
     /**
      * If true, the next plain-text message from this chat is interpreted
      * as a private key for import (instead of a Sui address).

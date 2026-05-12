@@ -522,6 +522,9 @@ async function main() {
                     return `${dir}@$${sk.toFixed(0)}  cover $${cover.toFixed(2)}  mark $${mark.toFixed(2)}  ${pnlSign}$${pnl.toFixed(2)}  (${p.status})`;
                 });
         }
+        const feeBps = CONFIG.BOT_TREASURY_ADDRESS ? CONFIG.BOT_FEE_BPS : 0;
+        const feesPaidUsd =
+            (sub.botFeesPaid ?? 0) / 10 ** CONFIG.DUSDC_DECIMALS;
         const view = botTraderMenu({
             needsSetup: false,
             address: sub.botWalletAddr,
@@ -531,6 +534,8 @@ async function main() {
             strategyOn: !!sub.strategyEnabled,
             openPositionLines,
             recentTradeLines: buildTradeLines(trades),
+            feeBps,
+            feesPaidUsd,
         });
         await editOrReply(ctx, view.text, { reply_markup: view.reply_markup });
     }
