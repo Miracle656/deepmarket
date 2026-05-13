@@ -11,6 +11,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.95.2",
+    "@mysten-incubation/memwal": "^0.0.3",
     "@mysten/sui": "^2.16.2",
     "dotenv": "^16.4.5",
     "telegraf": "^4.16.3"

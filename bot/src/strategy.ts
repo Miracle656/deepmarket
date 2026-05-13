@@ -1,16 +1,30 @@
-// Strategy engine — runs every STRATEGY_TICK_MS, picks the closest active
-// BTC oracle, and for each user with strategyEnabled=true mints UP at a
-// strike `STRATEGY_BUFFER_TICKS` below spot (the "sell vol" play).
+// Strategy engine — runs every STRATEGY_TICK_MS.
 //
-// Pre-trade checks per user:
-//   - Manager exists (else skip silently)
-//   - Wallet dUSDC balance covers worst-case cost (= quantity)
-//   - No existing open position at the same (oracle, strike, UP) tuple
-//
-// On each successful mint we DM the user a summary with the tx digest.
+// For each user with strategyEnabled=true:
+//   1) Redeem any settled positions first (frees up dUSDC + records the
+//      outcome in agent memory).
+//   2) Pick the closest active oracle.
+//   3) Ask the LLM agent for a decision; if the agent is disabled or the
+//      call fails, fall back to the rule-based "mint UP just below spot" path.
+//   4) Mint the chosen position (or pass) and DM the user with the rationale.
 
 import type { Telegraf } from 'telegraf';
 import { CONFIG } from './config.js';
+import {
+    decide,
+    isAgentAvailable,
+    snapStrikeUsdToRaw,
+    type AgentContext,
+} from './agent.js';
+import {
+    appendNote,
+    appendTrade,
+    exposureLastHourUsd,
+    getMemory,
+    recentWinRate,
+    settleTrade,
+} from './memory.js';
+import { rememberTrade, isMemWalAvailable } from './memwal.js';
 import {
     dusdcToUsd,
     getManagerPositions,
@@ -27,8 +41,14 @@ import { mintBinary, redeemBinary } from './trader.js';
 import { getUserBalances } from './user-wallet.js';
 
 const DUSDC_SCALE = 1_000_000;
+const COVER_USD_MIN = 0.1;
 
-function pickStrike(state: OracleState, oracle: OracleSummary): bigint | null {
+function maxCoverUsd(): number {
+    return Math.max(CONFIG.STRATEGY_QTY_USD * 3, 1.5);
+}
+
+/** Rule-based fallback: UP at strike `STRATEGY_BUFFER_TICKS` below spot. */
+function ruleStrike(state: OracleState, oracle: OracleSummary): bigint | null {
     if (!state.latest_price) return null;
     const spotRaw = BigInt(Math.floor(state.latest_price.spot));
     const minStrike = BigInt(oracle.min_strike);
@@ -56,6 +76,176 @@ async function pickOracle(): Promise<OracleSummary | null> {
     return eligible[0] ?? null;
 }
 
+interface MintAttempt {
+    direction: 'UP' | 'DOWN';
+    strike: bigint;
+    coverUsd: number;
+    rationale: string;
+}
+
+interface BatchPlan {
+    mints: MintAttempt[];
+    summaryRationale: string;
+    noteForSelf?: string;
+}
+
+/**
+ * Ask the agent for a 1-3 mint plan, validate + snap each one, drop
+ * duplicates against open positions, and clamp the total cover to the
+ * remaining hourly budget. Returns null to indicate "pass". Falls back
+ * to a single-mint rule plan when the agent is unavailable.
+ */
+async function chooseMintBatch(
+    chatId: number,
+    managerId: string,
+    oracle: OracleSummary,
+    state: OracleState
+): Promise<BatchPlan | null> {
+    let openPositions: Position[] = [];
+    try {
+        openPositions = (await getManagerPositions(managerId)).filter(
+            (p) => p.open_quantity > 0
+        );
+    } catch {
+        /* ignore — agent can still decide */
+    }
+
+    if (isAgentAvailable()) {
+        const memory = await getMemory(chatId);
+        const ctx: AgentContext = {
+            chatId,
+            oracle,
+            state,
+            openPositions,
+            memory,
+            exposureLastHour: exposureLastHourUsd(memory),
+        };
+        const wr = recentWinRate(memory);
+        const cooldownActive = wr !== null && wr.rate < 0.4;
+        const decision = await decide(ctx, CONFIG.STRATEGY_QTY_USD);
+        if (!decision) {
+            console.warn(
+                `[strategy] agent returned null for chat ${chatId}, falling back to rule`
+            );
+            // fall through to rule path
+        } else if (decision.action === 'pass') {
+            if (decision.noteForSelf) {
+                await appendNote(chatId, {
+                    ts: Date.now(),
+                    topic: 'pass',
+                    text: decision.noteForSelf,
+                });
+            }
+            console.log(
+                `[strategy] agent passed for chat ${chatId}: ${decision.summaryRationale}`
+            );
+            return null;
+        } else {
+            // mint — validate + snap each entry, dedupe, clamp budget
+            let remainingBudget = Math.max(
+                0,
+                CONFIG.AGENT_MAX_USD_PER_HOUR - ctx.exposureLastHour
+            );
+            const seen = new Set<string>(); // "<strikeRaw>:<UP|DOWN>"
+            const planned: MintAttempt[] = [];
+
+            for (const rawM of decision.mints) {
+                // Server-side circuit breaker: if recent win-rate is bad,
+                // halve cover sizes server-side even if the agent didn't.
+                // This is the opposite of Martingale — lose more → bet less.
+                const m = cooldownActive
+                    ? { ...rawM, coverUsd: rawM.coverUsd * 0.5 }
+                    : rawM;
+                if (remainingBudget < COVER_USD_MIN) break;
+                const snapped = snapStrikeUsdToRaw(oracle, m.strikeUsd);
+                if (snapped === null) {
+                    console.warn(
+                        `[strategy] dropping mint — strike $${m.strikeUsd} below min`
+                    );
+                    continue;
+                }
+                const key = `${snapped.toString()}:${m.direction}`;
+                if (seen.has(key)) {
+                    console.warn(
+                        `[strategy] dropping duplicate mint within batch ${key}`
+                    );
+                    continue;
+                }
+                const dupOpen = openPositions.find(
+                    (p) =>
+                        p.oracle_id === oracle.oracle_id &&
+                        BigInt(p.strike) === snapped &&
+                        p.is_up === (m.direction === 'UP')
+                );
+                if (dupOpen) {
+                    console.warn(
+                        `[strategy] dropping mint — position already open at ${key}`
+                    );
+                    continue;
+                }
+                const cover = clamp(
+                    m.coverUsd,
+                    COVER_USD_MIN,
+                    Math.min(maxCoverUsd(), remainingBudget)
+                );
+                if (cover < COVER_USD_MIN) continue;
+                planned.push({
+                    direction: m.direction,
+                    strike: snapped,
+                    coverUsd: cover,
+                    rationale: m.rationale,
+                });
+                seen.add(key);
+                remainingBudget -= cover;
+            }
+
+            if (planned.length === 0) {
+                console.log(
+                    `[strategy] all batch mints filtered out for chat ${chatId}`
+                );
+                return null;
+            }
+            const summary =
+                cooldownActive && wr
+                    ? `${decision.summaryRationale} [cooldown: ${wr.wins}/${wr.settled}=${(wr.rate * 100).toFixed(0)}% — sizes halved]`
+                    : decision.summaryRationale;
+            return {
+                mints: planned,
+                summaryRationale: summary,
+                ...(decision.noteForSelf
+                    ? { noteForSelf: decision.noteForSelf }
+                    : {}),
+            };
+        }
+    }
+
+    // Rule-based fallback — single UP mint at buffer-ticks-below-spot
+    const strike = ruleStrike(state, oracle);
+    if (strike === null) return null;
+    const dup = openPositions.find(
+        (p) =>
+            p.oracle_id === oracle.oracle_id &&
+            BigInt(p.strike) === strike &&
+            p.is_up === true
+    );
+    if (dup) return null;
+    return {
+        mints: [
+            {
+                direction: 'UP',
+                strike,
+                coverUsd: CONFIG.STRATEGY_QTY_USD,
+                rationale: `rule: spot well above strike (buffer ${CONFIG.STRATEGY_BUFFER_TICKS} ticks)`,
+            },
+        ],
+        summaryRationale: `rule loop · single UP mint at buffer ${CONFIG.STRATEGY_BUFFER_TICKS} ticks`,
+    };
+}
+
+function clamp(v: number, lo: number, hi: number): number {
+    return Math.max(lo, Math.min(hi, v));
+}
+
 async function tryMintForUser(
     bot: Telegraf,
     chatId: number,
@@ -63,71 +253,128 @@ async function tryMintForUser(
     oracle: OracleSummary,
     state: OracleState
 ): Promise<void> {
-    const strike = pickStrike(state, oracle);
-    if (strike === null) return;
+    const plan = await chooseMintBatch(chatId, managerId, oracle, state);
+    if (!plan) return;
 
-    // Cooldown: skip if user already has an open UP position on this strike.
-    const positions = await getManagerPositions(managerId).catch(() => []);
-    const dup = positions.find(
-        (p) =>
-            p.oracle_id === oracle.oracle_id &&
-            BigInt(p.strike) === strike &&
-            p.is_up === true &&
-            p.open_quantity > 0
-    );
-    if (dup) return;
-
-    // Worst-case position cost = quantity (when ask == 1). We deposit
-    // `quantity` from the user's wallet each time — wasteful but safe.
-    // Optimization: read manager balance and only deposit the gap. Later.
-    const quantity = BigInt(Math.floor(CONFIG.STRATEGY_QTY_USD * DUSDC_SCALE));
     const balances = await getUserBalances(chatId).catch(() => ({
         sui: 0,
         dusdc: 0,
     }));
-    const walletDusdcBase = Math.floor(balances.dusdc * DUSDC_SCALE);
-    if (BigInt(walletDusdcBase) < quantity) {
-        // Insufficient — silently skip. (Avoid spamming users every tick.)
-        return;
+    const walletDusdcBase = BigInt(Math.floor(balances.dusdc * DUSDC_SCALE));
+    const spotUsd = state.latest_price ? spotToUsd(state.latest_price.spot) : 0;
+    const oracleLabel = `${oracle.underlying_asset}-${approxBucket(oracle.expiry - Date.now())}`;
+
+    interface SettledMint {
+        attempt: MintAttempt;
+        digest: string;
+    }
+    interface FailedMint {
+        attempt: MintAttempt;
+        reason: string;
+    }
+    const settled: SettledMint[] = [];
+    const failed: FailedMint[] = [];
+
+    // Walk the planned mints sequentially — each mint debits the wallet
+    // dUSDC, so we deduct as we go to stop minting when the wallet runs dry.
+    let walletRemaining = walletDusdcBase;
+
+    for (const attempt of plan.mints) {
+        const quantity = BigInt(Math.floor(attempt.coverUsd * DUSDC_SCALE));
+        if (walletRemaining < quantity) {
+            failed.push({ attempt, reason: 'insufficient dUSDC' });
+            continue;
+        }
+        try {
+            const { digest } = await mintBinary(chatId, {
+                oracleId: oracle.oracle_id,
+                expiry: oracle.expiry,
+                strike: Number(attempt.strike),
+                isUp: attempt.direction === 'UP',
+                quantity,
+                depositAmount: quantity,
+            });
+            walletRemaining -= quantity;
+            settled.push({ attempt, digest });
+
+            await appendTrade(chatId, {
+                ts: Date.now(),
+                oracleId: oracle.oracle_id,
+                oracleLabel,
+                direction: attempt.direction,
+                strikeUsd: strikeToUsd(Number(attempt.strike)),
+                entrySpotUsd: spotUsd,
+                coverUsd: attempt.coverUsd,
+                costUsd: attempt.coverUsd, // refined on settlement
+                rationale: attempt.rationale,
+            });
+        } catch (e) {
+            const msg = e instanceof Error ? e.message : String(e);
+            failed.push({ attempt, reason: msg.slice(0, 80) });
+            console.warn(`[strategy] mint failed for chat ${chatId}:`, msg);
+        }
     }
 
-    try {
-        const { digest } = await mintBinary(chatId, {
-            oracleId: oracle.oracle_id,
-            expiry: oracle.expiry,
-            strike: Number(strike),
-            isUp: true,
-            quantity,
-            depositAmount: quantity,
+    if (plan.noteForSelf) {
+        await appendNote(chatId, {
+            ts: Date.now(),
+            topic: oracleLabel,
+            text: plan.noteForSelf,
         });
-        const strikeUsd = strikeToUsd(Number(strike));
-        const spotUsd = state.latest_price
-            ? spotToUsd(state.latest_price.spot)
-            : 0;
-        await bot.telegram
-            .sendMessage(
-                chatId,
-                `🤖 *Auto-mint*\n` +
-                    `UP @ $${strikeUsd.toFixed(0)}  cover $${CONFIG.STRATEGY_QTY_USD.toFixed(2)}\n` +
-                    `Spot: $${spotUsd.toFixed(2)}  ·  Expires ${new Date(oracle.expiry).toLocaleTimeString()}\n` +
-                    `\`${digest.slice(0, 14)}…\``,
-                { parse_mode: 'Markdown' }
-            )
-            .catch(() => {
-                /* user blocked the bot — ignore */
-            });
-    } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        console.warn(`[strategy] mint failed for chat ${chatId}:`, msg);
-        // Tell the user once per tick — they can pause the strategy if it keeps failing.
-        await bot.telegram
-            .sendMessage(
-                chatId,
-                `⚠️ Strategy mint failed: ${msg.slice(0, 200)}`,
-                { link_preview_options: { is_disabled: true } }
-            )
-            .catch(() => {});
     }
+
+    if (settled.length === 0 && failed.length === 0) return;
+
+    // Build a single summary DM. Header changes based on agent vs rule and
+    // batch size; each mint gets its own line with strike/direction/cover/why.
+    const isAgent = isAgentAvailable();
+    const headerWord = isAgent ? 'Agent' : 'Auto';
+    const header =
+        settled.length > 1
+            ? `🧠 *${headerWord} batch — ${settled.length} mints*`
+            : `🧠 *${headerWord} mint*`;
+    const lines: string[] = [header];
+    for (const s of settled) {
+        const arr = s.attempt.direction === 'UP' ? '↑' : '↓';
+        const sk = strikeToUsd(Number(s.attempt.strike));
+        lines.push(
+            `${arr} ${s.attempt.direction} @ $${sk.toFixed(0)}  ` +
+                `cover $${s.attempt.coverUsd.toFixed(2)}  ·  _${s.attempt.rationale}_`
+        );
+    }
+    if (failed.length > 0) {
+        lines.push('');
+        for (const f of failed) {
+            const arr = f.attempt.direction === 'UP' ? '↑' : '↓';
+            const sk = strikeToUsd(Number(f.attempt.strike));
+            lines.push(
+                `⚠️ skipped ${arr} ${f.attempt.direction} @ $${sk.toFixed(0)} — ${f.reason}`
+            );
+        }
+    }
+    lines.push('');
+    lines.push(
+        `Spot: $${spotUsd.toFixed(2)}  ·  Expires ${new Date(oracle.expiry).toLocaleTimeString()}`
+    );
+    lines.push(`_${plan.summaryRationale}_`);
+    if (settled[0]) {
+        lines.push(`\`${settled[0].digest.slice(0, 14)}…\``);
+    }
+
+    await bot.telegram
+        .sendMessage(chatId, lines.join('\n'), { parse_mode: 'Markdown' })
+        .catch(() => {
+            /* user blocked the bot — ignore */
+        });
+}
+
+/** Rough bucket label for an oracle's remaining lifetime. */
+function approxBucket(remainingMs: number): string {
+    const m = remainingMs / 60_000;
+    if (m <= 75) return '1h';
+    if (m <= 60 * 5) return '4h';
+    if (m <= 60 * 24 + 60) return '1d';
+    return 'long';
 }
 
 /**
@@ -146,7 +393,6 @@ async function redeemSettledForUser(
     } catch {
         return;
     }
-    // "redeemable" (settled winner) or "lost"/"won" — anything terminal.
     const settled = positions.filter(
         (p) =>
             p.open_quantity > 0 &&
@@ -169,6 +415,47 @@ async function redeemSettledForUser(
                 isUp: p.is_up,
                 quantity: BigInt(p.open_quantity),
             });
+
+            // Record outcome in agent memory so future decisions see the result.
+            await settleTrade(
+                chatId,
+                {
+                    oracleId: p.oracle_id,
+                    strikeUsd,
+                    direction: p.is_up ? 'UP' : 'DOWN',
+                },
+                payoutUsd,
+                isWin
+            );
+
+            // Mirror the finalized trade to MemWal as a natural-language memory
+            // so the agent can semantically recall it later. We look up the
+            // matching memory record to grab the original rationale + entry spot.
+            if (isMemWalAvailable()) {
+                const mem = await getMemory(chatId).catch(() => null);
+                const matched = mem?.trades.find(
+                    (t) =>
+                        t.oracleId === p.oracle_id &&
+                        t.direction === (p.is_up ? 'UP' : 'DOWN') &&
+                        Math.abs(t.strikeUsd - strikeUsd) < 1
+                );
+                if (matched) {
+                    void rememberTrade({
+                        chatId,
+                        ts: matched.ts,
+                        oracleLabel: matched.oracleLabel,
+                        direction: matched.direction,
+                        strikeUsd: matched.strikeUsd,
+                        entrySpotUsd: matched.entrySpotUsd,
+                        coverUsd: matched.coverUsd,
+                        costUsd: costUsd,
+                        payoutUsd,
+                        won: isWin,
+                        rationale: matched.rationale,
+                    });
+                }
+            }
+
             const header = isWin ? '🎉 *Won*' : '💔 *Lost*';
             const pnlSign = pnlUsd >= 0 ? '+' : '';
             await bot.telegram
@@ -182,7 +469,6 @@ async function redeemSettledForUser(
                 .catch(() => {});
         } catch (e) {
             const msg = e instanceof Error ? e.message : String(e);
-            // vec_set / already-redeemed errors are noise — only surface real ones.
             if (!/already.?redeemed|EInsufficientPosition/i.test(msg)) {
                 console.warn(
                     `[strategy] redeem failed for chat ${chatId}:`,
@@ -227,12 +513,11 @@ export function startStrategyLoop(bot: Telegraf): () => void {
         }
     };
 
-    // Fire once immediately, then on the configured cadence.
     void tick();
     const id = setInterval(() => void tick(), CONFIG.STRATEGY_TICK_MS);
+    const mode = isAgentAvailable() ? 'LLM agent' : 'rule fallback';
     console.log(
-        `[strategy] loop running every ${CONFIG.STRATEGY_TICK_MS}ms ` +
-            `(buffer=${CONFIG.STRATEGY_BUFFER_TICKS} ticks, qty=$${CONFIG.STRATEGY_QTY_USD})`
+        `[strategy] loop running every ${CONFIG.STRATEGY_TICK_MS}ms · ${mode}`
     );
     return () => clearInterval(id);
 }

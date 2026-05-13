@@ -39,6 +39,30 @@ export const CONFIG = {
     BOT_TREASURY_ADDRESS: process.env.BOT_TREASURY_ADDRESS ?? '',
     BOT_FEE_BPS: Number(process.env.BOT_FEE_BPS ?? 100), // 100 bps = 1%
 
+    // ── LLM agent (Claude) ────────────────────────────────────────
+    // When ANTHROPIC_API_KEY is set + AGENT_ENABLED=true, the strategy
+    // tick consults Claude for each user's mint decision. When the key
+    // is missing the loop falls back to the rule-based pickStrike path.
+    ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY ?? '',
+    AGENT_ENABLED: (process.env.AGENT_ENABLED ?? 'true') === 'true',
+    AGENT_MODEL: process.env.AGENT_MODEL ?? 'claude-opus-4-7',
+    /** Soft cap — agent stops minting after this many USD of new exposure per user per hour. */
+    AGENT_MAX_USD_PER_HOUR: Number(process.env.AGENT_MAX_USD_PER_HOUR ?? 5),
+    AGENT_MEMORY_PATH: process.env.AGENT_MEMORY_PATH ?? './agent-memory.json',
+
+    // ── MemWal (Walrus-backed semantic memory) ────────────────────
+    // When all three are set, every settled trade is written as a
+    // natural-language memory via MemWal and the agent recalls the
+    // most relevant ones at decision time. Falls back silently when
+    // any field is missing.
+    MEMWAL_ACCOUNT_ID: process.env.MEMWAL_ACCOUNT_ID ?? '',
+    MEMWAL_DELEGATE_KEY: process.env.MEMWAL_DELEGATE_KEY ?? '',
+    MEMWAL_SERVER_URL:
+        process.env.MEMWAL_SERVER_URL ?? 'https://relayer.staging.memwal.ai',
+    MEMWAL_NAMESPACE: process.env.MEMWAL_NAMESPACE ?? 'deepmarket-bot',
+    /** How many recalled memories to inject into the agent prompt. */
+    MEMWAL_RECALL_LIMIT: Number(process.env.MEMWAL_RECALL_LIMIT ?? 5),
+
     // Move package constants — must match the deployed Predict instance
     PREDICT_PACKAGE_ID:
         '0xf5ea2b3749c65d6e56507cc35388719aadb28f9cab873696a2f8687f5c785138',

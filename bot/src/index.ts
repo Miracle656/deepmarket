@@ -36,6 +36,9 @@ import {
 } from './store.js';
 import { startWatchers } from './watchers.js';
 import { startStrategyLoop } from './strategy.js';
+import { isAgentAvailable } from './agent.js';
+import { getMemory } from './memory.js';
+import { isMemWalAvailable, pingMemWal } from './memwal.js';
 import {
     dusdcToUsd,
     findManagerByOwner,
@@ -525,6 +528,9 @@ async function main() {
         const feeBps = CONFIG.BOT_TREASURY_ADDRESS ? CONFIG.BOT_FEE_BPS : 0;
         const feesPaidUsd =
             (sub.botFeesPaid ?? 0) / 10 ** CONFIG.DUSDC_DECIMALS;
+        const agentMode: 'llm' | 'rule' = isAgentAvailable() ? 'llm' : 'rule';
+        const memory = await getMemory(ctx.chat.id).catch(() => null);
+        const lastNote = memory?.notes[0]?.text;
         const view = botTraderMenu({
             needsSetup: false,
             address: sub.botWalletAddr,
@@ -536,6 +542,9 @@ async function main() {
             recentTradeLines: buildTradeLines(trades),
             feeBps,
             feesPaidUsd,
+            agentMode,
+            memwalOn: isMemWalAvailable(),
+            ...(lastNote ? { lastAgentNote: lastNote } : {}),
         });
         await editOrReply(ctx, view.text, { reply_markup: view.reply_markup });
     }
@@ -726,6 +735,12 @@ async function main() {
     bot.catch((err, ctx) => {
         console.error(`[bot] handler error in update ${ctx.update.update_id}:`, err);
     });
+
+    if (isMemWalAvailable()) {
+        void pingMemWal();
+    } else {
+        console.log('[memwal] disabled (MEMWAL_ACCOUNT_ID or DELEGATE_KEY missing)');
+    }
 
     const stopWatchers = startWatchers(bot);
     const stopStrategy = startStrategyLoop(bot);

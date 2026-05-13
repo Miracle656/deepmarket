@@ -1384,8 +1384,7 @@ body {
 
 /* ──────────────────────────────── ALERTS ──────────────────────────────── */
 .alert {
-  display: flex;
-  gap: 8px;
+  display: block;
   padding: 10px 12px;
   border-radius: var(--radius-sm);
   font-size: 0.78rem;
@@ -1714,6 +1713,24 @@ body {
 .lp-infra-canvas-corner.tr { top: -1px;    right: -1px;   border-width: 1px 1px 0 0; }
 .lp-infra-canvas-corner.bl { bottom: -1px; left: -1px;    border-width: 0 0 1px 1px; }
 .lp-infra-canvas-corner.br { bottom: -1px; right: -1px;   border-width: 0 1px 1px 0; }
+/* Single-column variant — canvas spans the row, labels render inline on the canvas */
+.lp-infra-grid--canvas-only {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+  min-height: 0;
+}
+.lp-infra-canvas--wide {
+  height: 460px;
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+@media (max-width: 900px) {
+  .lp-infra-canvas--wide { height: 380px; }
+}
+@media (max-width: 640px) {
+  .lp-infra-canvas--wide { height: 320px; }
+}
 .lp-infra-cards {
   display: flex;
   flex-direction: column;

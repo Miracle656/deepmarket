@@ -174,6 +174,12 @@ export interface BotTraderState {
     feesPaidUsd?: number;
     /** Per-trade fee rate (basis points) — shown to make the fee visible. */
     feeBps?: number;
+    /** Trading brain: LLM-driven (Claude) or rule-based fallback. */
+    agentMode?: 'llm' | 'rule';
+    /** Latest persisted agent note (most recent first). */
+    lastAgentNote?: string;
+    /** MemWal (Walrus-backed semantic memory) is wired up + reachable. */
+    memwalOn?: boolean;
 }
 
 export function botTraderMenu(state: BotTraderState): {
@@ -230,8 +236,15 @@ export function botTraderMenu(state: BotTraderState): {
         `Wallet: \`${addrShort}\``,
         `SUI: ${(state.suiBalance ?? 0).toFixed(4)}   dUSDC: ${(state.dusdcBalance ?? 0).toFixed(2)}`,
         `Manager: \`${mgrShort}\``,
-        `Strategy: ${state.strategyOn ? '🟢 ON' : '⚪ off'}`,
+        `Strategy: ${state.strategyOn ? '🟢 ON' : '⚪ off'}` +
+            (state.agentMode
+                ? `  ·  ${state.agentMode === 'llm' ? '🧠 Claude' : '📐 rule'}`
+                : '') +
+            (state.memwalOn ? `  ·  🐋 MemWal` : ''),
     ];
+    if (state.lastAgentNote) {
+        lines.push(`📝 _${state.lastAgentNote}_`);
+    }
     if (state.feeBps !== undefined && state.feeBps > 0) {
         const feePct = (state.feeBps / 100).toFixed(2);
         const paid = (state.feesPaidUsd ?? 0).toFixed(4);

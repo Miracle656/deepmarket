@@ -50,7 +50,7 @@ export function alertStrikeCrossed(
         `Current: ${esc(fmtUsd(spotUsd))}`,
         `Expiry: ${esc(new Date(oracle.expiry).toLocaleString())}`,
         '',
-        `_If you hold an UP@${esc(fmtUsd(strikeUsd))} position, you're now ${crossedUp ? 'in the money' : 'out of the money'}._`,
+        `_If you hold an UP@${esc(fmtUsd(strikeUsd))} position, you're now ${crossedUp ? 'in the money' : 'out of the money'}\\._`,
     ].join('\n');
     return {
         text,
@@ -72,7 +72,7 @@ export function alertOracleNearExpiry(
         `*${esc(oracle.underlying_asset)} oracle settling in ~${minutes}m*`,
         `Expires: ${esc(new Date(oracle.expiry).toLocaleString())}`,
         '',
-        `_Last chance to sell open positions before settlement freezes payouts._`,
+        `_Last chance to sell open positions before settlement freezes payouts\\._`,
     ].join('\n');
     return {
         text,
@@ -106,11 +106,11 @@ export function alertOracleSettled(
         }
         if (wins.length) {
             lines.push('');
-            lines.push(`_Tap below to claim your winnings._`);
+            lines.push(`_Tap below to claim your winnings\\._`);
         }
     } else {
         lines.push('');
-        lines.push('_You had no positions on this oracle._');
+        lines.push('_You had no positions on this oracle\\._');
     }
     return {
         text: lines.join('\n'),
@@ -140,10 +140,10 @@ export function alertSpotResolved(
     lines.push(`Resolved: ${esc(yesWon ? 'YES' : 'NO')} won`);
     if (holdingWinner) {
         lines.push('');
-        lines.push(`🎉 You hold ${esc(winSize.toFixed(4))} ${esc(yesWon ? 'YES' : 'NO')} tokens — redeemable now.`);
+        lines.push(`🎉 You hold ${esc(winSize.toFixed(4))} ${esc(yesWon ? 'YES' : 'NO')} tokens — redeemable now\\.`);
     } else if (yes > 0 || no > 0) {
         lines.push('');
-        lines.push(`Your position settled at 0.`);
+        lines.push(`Your position settled at 0\\.`);
     }
     return {
         text: lines.join('\n'),

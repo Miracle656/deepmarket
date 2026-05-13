@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback, type CSSProperties } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
@@ -18,10 +18,6 @@ import InfrastructureStack3D, { type LayerSpec } from './InfrastructureStack3D';
 
 // DeepBook brand assets
 import assetInfinity  from '../assets/deepbookdes/Frame 2147260714.png';
-import assetCross     from '../assets/deepbookdes/Frame 2147260716.png';
-import assetCoin      from '../assets/deepbookdes/Frame 2147260718.png';
-import assetCube      from '../assets/deepbookdes/Frame 2147260719.png';
-import assetStack     from '../assets/deepbookdes/Frame 2147260729.png';
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -31,36 +27,15 @@ const fadeUp = {
     show:   { opacity: 1, y: 0,  transition: { duration: 0.65, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] } },
 };
 
-// ── Features data ──
-const FEATURES = [
-    {
-        img: assetStack,
-        title: 'DeepBook V3 Order Books',
-        desc: "Real limit & market orders matched on-chain. Native CLOB DEX — no AMM curves, no slippage games.",
-    },
-    {
-        img: assetCoin,
-        title: 'YES / NO Outcome Tokens',
-        desc: 'Every market mints two tradeable tokens backed 1:1 by SUI collateral locked in an on-chain vault.',
-    },
-    {
-        img: assetCube,
-        title: 'On-Chain Resolution',
-        desc: 'Outcomes are written immutably to Sui. No backend, no middleman — oracle or admin resolves on-chain.',
-    },
-    {
-        img: assetCross,
-        title: 'Permissionless Creation',
-        desc: 'Anyone can deploy a prediction market. Token contracts are compiled and published per market.',
-    },
-];
-
-// ── Infrastructure stack — layer colors (bottom→top mirrors FEATURES order) ──
+// ── Infrastructure stack — layer codes + titles (bottom→top) ──
+// Blue at the foundation, fading through cyan into rose at the agent layer —
+// signals "deeper = lower-level infra, higher = closer to the user".
 const INFRA_LAYERS: LayerSpec[] = [
-    { color: '#1c6fff', edgeColor: '#4d9fff' },  // L01 — DeepBook V3 Order Books
-    { color: '#3a85ff', edgeColor: '#7ab4ff' },  // L02 — YES/NO Outcome Tokens
-    { color: '#ff4d6a', edgeColor: '#ff8095' },  // L03 — On-Chain Resolution
-    { color: '#ff7a92', edgeColor: '#ffadbb' },  // L04 — Permissionless Creation
+    { color: '#1c6fff', edgeColor: '#4d9fff', code: 'L01', title: 'Sui + DeepBook V3' },
+    { color: '#3a85ff', edgeColor: '#7ab4ff', code: 'L02', title: 'Spot YES/NO + DeepBook Predict' },
+    { color: '#28b8d4', edgeColor: '#5cc8e2', code: 'L03', title: 'Stack Messaging + Walrus + Seal' },
+    { color: '#ff4d6a', edgeColor: '#ff8095', code: 'L04', title: 'DeepMarket web app' },
+    { color: '#ff7a92', edgeColor: '#ffadbb', code: 'L05', title: 'Telegram agent · auto trader' },
 ];
 
 // ── Candle showcase metadata (one entry per candle, indices 0..8) ──
@@ -474,7 +449,7 @@ export default function LandingPage() {
                 id="features"
                 ref={featuresRef}
                 className="lp-section lp-infra-section"
-                style={{ paddingTop: 80, paddingBottom: 80, position: 'relative', overflow: 'hidden' }}
+                style={{ paddingTop: 56, paddingBottom: 56, position: 'relative', overflow: 'hidden' }}
             >
                 {/* Parallax bg blobs */}
                 <div
@@ -498,18 +473,17 @@ export default function LandingPage() {
                     }}
                 />
 
-                <div style={{ textAlign: 'center', marginBottom: 56, position: 'relative', zIndex: 1 }}>
-                    <div style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--no)', marginBottom: 14 }}>
+                <div style={{ textAlign: 'center', marginBottom: 28, position: 'relative', zIndex: 1 }}>
+                    <div style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--no)', marginBottom: 10 }}>
                         Infrastructure
                     </div>
-                    <h2 className="lp-mask-title" style={{ fontSize: 'clamp(2.2rem, 6vw, 4.4rem)', fontWeight: 900, letterSpacing: '-0.035em', color: 'var(--text-primary)', margin: 0 }}>
+                    <h2 className="lp-mask-title" style={{ fontSize: 'clamp(1.9rem, 4.6vw, 3.4rem)', fontWeight: 900, letterSpacing: '-0.035em', color: 'var(--text-primary)', margin: 0 }}>
                         <span>Built Different</span>
                     </h2>
                 </div>
 
-                <div className="lp-infra-grid">
-                    {/* LEFT — 3D stack canvas with technical frame */}
-                    <div className="lp-infra-canvas">
+                <div className="lp-infra-grid lp-infra-grid--canvas-only">
+                    <div className="lp-infra-canvas lp-infra-canvas--wide">
                         <span className="lp-infra-canvas-corner tl" />
                         <span className="lp-infra-canvas-corner tr" />
                         <span className="lp-infra-canvas-corner bl" />
@@ -520,36 +494,6 @@ export default function LandingPage() {
                             activeIndex={activeLayer}
                             onLayerHover={handleLayerHover}
                         />
-                    </div>
-
-                    {/* RIGHT — description cards (bottom-of-stack first to mirror 3D) */}
-                    <div className="lp-infra-cards">
-                        {FEATURES.map((f, i) => {
-                            const isActive = activeLayer === i;
-                            const accentColor = INFRA_LAYERS[i].edgeColor;
-                            return (
-                                <motion.div
-                                    key={i}
-                                    onMouseEnter={() => setActiveLayer(i)}
-                                    onMouseLeave={() => setActiveLayer(null)}
-                                    initial={{ opacity: 0, x: 24 }}
-                                    whileInView={{ opacity: 1, x: 0 }}
-                                    viewport={{ once: true, amount: 0.4 }}
-                                    transition={{ delay: i * 0.08, duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-                                    className={`lp-infra-card ${isActive ? 'is-active' : ''}`}
-                                    style={{ '--accent': accentColor } as CSSProperties}
-                                >
-                                    <div className="lp-infra-card-num">
-                                        L{String(i + 1).padStart(2, '0')}
-                                    </div>
-                                    <div className="lp-infra-card-body">
-                                        <h3 className="lp-infra-card-title">{f.title}</h3>
-                                        <p className="lp-infra-card-desc">{f.desc}</p>
-                                    </div>
-                                    <div className="lp-infra-card-bar" aria-hidden="true" />
-                                </motion.div>
-                            );
-                        })}
                     </div>
                 </div>
             </section>
