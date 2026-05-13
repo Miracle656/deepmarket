@@ -4,7 +4,7 @@
 // Server provides indexed market state, oracle list, manager portfolios, vault summaries.
 // Use Sui RPC for confirmation-critical reads around wallet flows.
 
-import type { SuiObjectChange } from '@mysten/sui/client';
+import type { SuiObjectChange } from '@mysten/sui/jsonRpc';
 import { CONFIG } from './config';
 
 // ──────────────────────────────────────────────────────────────────────────

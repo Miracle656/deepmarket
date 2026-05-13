@@ -425,13 +425,12 @@ export default function InfrastructureStack3D({
                 const yTop = baseY + LAYER_H / 2 + boost * spot;
                 const yBot = baseY - LAYER_H / 2 + boost * spot;
 
-                // 8 corners
+                // 7 visible corners (back-left-bottom is occluded in iso view, skipped)
                 const S = BASE_S * (1 + spot * 0.04);
                 const c000 = project(-S, yTop, -S, state.tiltX, state.tiltY, cx, cy, scale);
                 const c100 = project( S, yTop, -S, state.tiltX, state.tiltY, cx, cy, scale);
                 const c101 = project( S, yTop,  S, state.tiltX, state.tiltY, cx, cy, scale);
                 const c001 = project(-S, yTop,  S, state.tiltX, state.tiltY, cx, cy, scale);
-                const b000 = project(-S, yBot, -S, state.tiltX, state.tiltY, cx, cy, scale);
                 const b100 = project( S, yBot, -S, state.tiltX, state.tiltY, cx, cy, scale);
                 const b101 = project( S, yBot,  S, state.tiltX, state.tiltY, cx, cy, scale);
                 const b001 = project(-S, yBot,  S, state.tiltX, state.tiltY, cx, cy, scale);
