@@ -10,9 +10,12 @@
 
 import type { SuiJsonRpcClient as SuiClient } from '@mysten/sui/jsonRpc';
 
-// v1 of deepmarket_contract — where the agent_cap module's types are rooted.
+// Type origin — a struct's type id uses the package version where its MODULE
+// was first published, not the package's original v1 id. agent_cap was added
+// in the v1→v2 upgrade, so its types are rooted at v2 (0xf2189af2…). Verified
+// against on-chain AgentCapCreated events.
 const TYPE_ORIGIN =
-    '0x6d968a4810498a16f18beca840667350ed5aafc119c3d8cbd3033676b622c774';
+    '0xf2189af211ace44b5365d3c0cb8a8b96137897957fa53b7f83570db0f1f10068';
 
 const CREATED_EVENT = `${TYPE_ORIGIN}::agent_cap::AgentCapCreated`;
 const DECISION_EVENT = `${TYPE_ORIGIN}::agent_cap::AgentDecisionMade`;
