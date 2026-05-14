@@ -1,0 +1,51 @@
+name: CodeQL
+
+on:
+  pull_request:
+    paths:
+      - 'deepmarket/**'
+      - 'bot/**'
+      - '.github/workflows/codeql.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'deepmarket/**'
+      - 'bot/**'
+      - '.github/workflows/codeql.yml'
+  schedule:
+    # Weekly Monday at 05:00 UTC.
+    - cron: '0 5 * * 1'
+
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        # Rust SAST is covered by clippy in indexer-ci.yml.
+        # Move is not supported by CodeQL.
+        language: ['javascript-typescript']
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+          queries: security-and-quality
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: '/language:${{ matrix.language }}'
