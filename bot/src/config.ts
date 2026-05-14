@@ -63,6 +63,15 @@ export const CONFIG = {
     /** How many recalled memories to inject into the agent prompt. */
     MEMWAL_RECALL_LIMIT: Number(process.env.MEMWAL_RECALL_LIMIT ?? 5),
 
+    // ── AgentCap (on-chain policy object + audit log) ─────────────
+    // deepmarket_contract v3 — the package holding the agent_cap module.
+    // The bot calls agent_cap::record_decision after each mint so every
+    // decision lands an AgentDecisionMade event on-chain. If a user's cap
+    // is revoked on-chain, the strategy loop stops trading for them.
+    AGENT_CAP_PACKAGE_ID:
+        process.env.AGENT_CAP_PACKAGE_ID ??
+        '0x50a58add3954967d6c6480469b9fa78f3f7bb21fed9cda88323cdf7a87771c29',
+
     // Move package constants — must match the deployed Predict instance
     PREDICT_PACKAGE_ID:
         '0xf5ea2b3749c65d6e56507cc35388719aadb28f9cab873696a2f8687f5c785138',

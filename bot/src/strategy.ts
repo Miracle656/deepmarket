@@ -36,9 +36,16 @@ import {
     type OracleSummary,
     type Position,
 } from './predict.js';
-import { listAll } from './store.js';
+import { listAll, patchSubscription, type Subscription } from './store.js';
 import { mintBinary, redeemBinary } from './trader.js';
 import { getUserBalances } from './user-wallet.js';
+import {
+    findAgentCapForBot,
+    getAgentCapState,
+    isCapUsable,
+    recordDecision,
+    type AgentCapInfo,
+} from './agent-cap.js';
 
 const DUSDC_SCALE = 1_000_000;
 const COVER_USD_MIN = 0.1;
@@ -246,13 +253,66 @@ function clamp(v: number, lo: number, hi: number): number {
     return Math.max(lo, Math.min(hi, v));
 }
 
+/**
+ * Resolve the user's on-chain AgentCap. Uses the cached `sub.agentCapId`
+ * when present, otherwise auto-discovers it from AgentCapCreated events
+ * keyed by the bot wallet address and caches the result. Returns null
+ * when the user hasn't authorized an agent (cap is opt-in — absence does
+ * not block trading, since funding the custodial wallet already implies
+ * authorization in the current model).
+ */
+async function resolveCap(sub: Subscription): Promise<AgentCapInfo | null> {
+    if (sub.agentCapId) {
+        const state = await getAgentCapState(sub.agentCapId);
+        if (state && state.revoked !== sub.agentCapRevoked) {
+            await patchSubscription(sub.chatId, {
+                agentCapRevoked: state.revoked,
+            });
+        }
+        return state;
+    }
+    if (!sub.botWalletAddr) return null;
+    const discovered = await findAgentCapForBot(sub.botWalletAddr);
+    if (discovered) {
+        await patchSubscription(sub.chatId, {
+            agentCapId: discovered.capId,
+            agentCapRevoked: discovered.revoked,
+        });
+    }
+    return discovered;
+}
+
 async function tryMintForUser(
     bot: Telegraf,
-    chatId: number,
-    managerId: string,
+    sub: Subscription,
     oracle: OracleSummary,
     state: OracleState
 ): Promise<void> {
+    const chatId = sub.chatId;
+    const managerId = sub.botManagerId;
+    if (!managerId) return;
+
+    // AgentCap gate — if the user authorized an agent cap and then revoked
+    // (or it expired), stop minting for them. Redeeming is still allowed
+    // elsewhere so revocation never traps funds.
+    const cap = await resolveCap(sub);
+    if (cap && !isCapUsable(cap)) {
+        if (!sub.agentCapRevoked) {
+            await patchSubscription(chatId, { agentCapRevoked: true });
+            await bot.telegram
+                .sendMessage(
+                    chatId,
+                    `🛑 *Agent paused* — your on-chain AgentCap is ` +
+                        `${cap.revoked ? 'revoked' : 'expired'}. ` +
+                        `New mints are stopped; existing positions still auto-redeem. ` +
+                        `Re-authorize in the app to resume.`,
+                    { parse_mode: 'Markdown' }
+                )
+                .catch(() => {});
+        }
+        return;
+    }
+
     const plan = await chooseMintBatch(chatId, managerId, oracle, state);
     if (!plan) return;
 
@@ -308,6 +368,22 @@ async function tryMintForUser(
                 costUsd: attempt.coverUsd, // refined on settlement
                 rationale: attempt.rationale,
             });
+
+            // On-chain audit log — emit an AgentDecisionMade event via the
+            // user's AgentCap. Best-effort: a failed record never undoes the
+            // mint that already happened. The Move side aborts if the cap was
+            // revoked mid-tick, so the log stays binding.
+            if (cap) {
+                void recordDecision(chatId, {
+                    capId: cap.capId,
+                    oracleId: oracle.oracle_id,
+                    isMint: true,
+                    directionUp: attempt.direction === 'UP',
+                    strike: Number(attempt.strike),
+                    coverUsd: Math.floor(attempt.coverUsd * DUSDC_SCALE),
+                    rationale: attempt.rationale,
+                });
+            }
         } catch (e) {
             const msg = e instanceof Error ? e.message : String(e);
             failed.push({ attempt, reason: msg.slice(0, 80) });
@@ -509,7 +585,7 @@ export function startStrategyLoop(bot: Telegraf): () => void {
 
         for (const sub of subs) {
             if (!sub.botManagerId) continue;
-            await tryMintForUser(bot, sub.chatId, sub.botManagerId, oracle, state);
+            await tryMintForUser(bot, sub, oracle, state);
         }
     };
 

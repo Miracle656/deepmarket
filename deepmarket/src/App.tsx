@@ -12,6 +12,7 @@ import LandingPage from './components/LandingPage';
 import PortfolioPage from './components/PortfolioPage';
 import PredictPage from './components/PredictPage';
 import PredictDetailPage from './components/PredictDetailPage';
+import AgentAuthorizePage from './components/AgentAuthorizePage';
 import { rippleThemeToggle } from './lib/themeToggle';
 
 type Filter = 'All' | 'Active' | 'Resolved';
@@ -78,7 +79,7 @@ function AppInner() {
         </button>
 
         <div className="nav-tabs">
-          {(['markets', 'predict', 'portfolio', 'about'] as const).map(t => (
+          {(['markets', 'predict', 'portfolio', 'agent', 'about'] as const).map(t => (
             <NavLink
               key={t}
               to={`/${t}`}
@@ -248,6 +249,7 @@ function AppInner() {
             <Route path="/predict" element={<PredictPage />} />
             <Route path="/predict/:oracleId" element={<PredictDetailPage theme={theme} />} />
             <Route path="/portfolio" element={<PortfolioPage markets={markets} />} />
+            <Route path="/agent" element={<AgentAuthorizePage />} />
 
             <Route path="/about" element={
               <div style={{ maxWidth: 680, padding: '20px 0' }}>
