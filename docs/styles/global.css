@@ -90,10 +90,19 @@ html.dark .nextra-banner-container {
     color: var(--dm-text);
 }
 
-/* Sidebar — deeper bg, branded active state */
+/* Sidebar — deeper bg, branded active state.
+   Mobile breakpoint forces full opacity: the sidebar is a slide-in drawer
+   there, and translucency lets content bleed through visibly. */
 html.dark aside.nextra-sidebar-container {
     background-color: rgba(10, 22, 40, 0.55) !important;
     border-right: 1px solid var(--dm-border);
+}
+@media (max-width: 767px) {
+    html.dark aside.nextra-sidebar-container {
+        background-color: var(--dm-bg-nav) !important;
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+    }
 }
 
 html.dark .nextra-sidebar-container a:hover {
@@ -171,11 +180,18 @@ html.dark pre {
     box-shadow: 0 1px 0 rgba(28, 111, 255, 0.12) inset;
 }
 
-/* Tables — branded headers */
+/* Tables — branded headers + mobile-safe overflow.
+   Long 0x ids in the Deployed Contracts page were pushing past the viewport
+   on phones. `display: block` + `overflow-x: auto` makes the table itself a
+   scroll container; `word-break: break-all` on inline code lets hex ids wrap
+   within cells so most tables don't even need scroll. */
 html.dark .nextra-content table {
     border: 1px solid var(--dm-border);
     border-radius: 10px;
-    overflow: hidden;
+    overflow-x: auto;
+    display: block;
+    width: 100%;
+    max-width: 100%;
 }
 html.dark .nextra-content thead {
     background: rgba(28, 111, 255, 0.08);
@@ -189,6 +205,12 @@ html.dark .nextra-content th {
 html.dark .nextra-content td,
 html.dark .nextra-content th {
     border-color: var(--dm-border) !important;
+    word-break: break-word;
+}
+html.dark .nextra-content td code,
+html.dark .nextra-content th code {
+    word-break: break-all;
+    font-size: 0.78em;
 }
 
 /* Callouts — branded edges */
