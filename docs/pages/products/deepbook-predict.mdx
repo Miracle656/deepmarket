@@ -1,0 +1,169 @@
+import { Callout, Steps } from 'nextra/components'
+
+# DeepBook Predict
+
+DeepBook Predict is **Mysten's volatility-surface-priced prediction protocol**.
+Where Spot YES/NO markets answer "Will X happen?", Predict prices **every
+strike and expiry against a live SVI surface** — so the same underlying
+(currently BTC) supports an unbounded grid of binary options on hourly
+rolling expiries.
+
+<Callout type="info">
+  Predict is a separate Move package owned by Mysten. DeepMarket integrates it
+  as the second market backend — we don't deploy or own the Predict contracts.
+</Callout>
+
+## What's different from Spot
+
+| | Spot YES/NO | DeepBook Predict |
+|---|---|---|
+| Matching | DeepBook V3 CLOB | Vault is the counterparty |
+| Pricing | Order-book discovery | SVI vol surface evaluated per-strike |
+| Strikes | One per market | A grid: any strike on the tick size |
+| Expiries | Per-market, fixed | Rolling hourly oracles |
+| Quote | SUI | dUSDC |
+| Position object | YES/NO tokens (fungible) | `BinaryPosition` / `RangePosition` (on a `PredictManager`) |
+
+## Concepts
+
+### Oracle
+
+An `Oracle` is one **expiry**. Mysten's testnet runs rolling 1-hour BTC
+oracles. Each has:
+
+- `min_strike` and `tick_size` — defines the on-grid strikes
+- `expiry` — the settlement timestamp
+- `status` — `inactive` → `active` → `pending` → `settled`
+- `latest_price` — current spot + forward (read from the price feed)
+- `latest_svi` — `{a, b, ρ, m, σ}` parameters fitting the vol smile
+
+### PredictManager
+
+Your **margin account**. One per address (you can own multiple). Holds:
+
+- `trading_balance` — dUSDC available for new positions
+- Open positions (binary + range)
+- Realized + unrealized P&L
+
+You must initialize a manager (single tx) before your first mint. The
+frontend caches the manager id in `localStorage` and falls back to a server
+lookup if the cache is empty.
+
+### Binary positions
+
+A bet that BTC will be **above** (UP) or **at-or-below** (DOWN) a chosen
+**strike** at the oracle's expiry. If you're right, the position pays out
+`quantity` dUSDC; if you're wrong, it pays zero.
+
+### Range positions
+
+A bet that BTC will settle **within a band** `[lower, higher]`. Built on
+`predict::mint_range`. Useful for views like "BTC will stay rangebound this
+hour."
+
+## End-to-end flow
+
+<Steps>
+
+### Initialize a manager (once)
+
+```
+predict::create_manager(ctx) → ID
+```
+
+The deployed package shares the manager internally and returns just an id,
+so this is a single transaction the frontend wraps.
+
+### Deposit + mint in one PTB
+
+```
+predict_manager::deposit<dUSDC>(manager, coin)
+market_key::new(oracle_id, expiry, strike, is_up) → key
+predict::mint<dUSDC>(predict, manager, oracle, key, quantity, clock)
+```
+
+The frontend bundles the optional deposit step into the mint PTB.
+First-mint is therefore **2 signatures** (init manager → deposit+mint).
+Repeat mints are **1 signature**.
+
+### Watch the strike-grid
+
+The mint sidebar shows an 11-strike grid centered on rounded spot. Pick
+direction (UP/DOWN), quantity ($1 / $5 / $10 / $25 chips or custom), and
+the live cost / payout / implied probability render via a 350ms-debounced
+`devInspect` of `predict::get_trade_amounts`.
+
+### Settle and redeem
+
+When the oracle settles, your in-the-money position transitions to
+`redeemable` (or `won`). Out-of-the-money becomes `lost`. Click **Claim**
+on the position row — the payout flows back into your manager as dUSDC.
+
+```
+predict::redeem<dUSDC>(predict, manager, oracle, key, quantity, clock)
+```
+
+### Withdraw to wallet
+
+`predict::withdraw<dUSDC>(manager, amount)` pulls dUSDC from the manager
+back into your wallet. Shown as the **Withdraw $X → wallet** button at the
+top of the sidebar.
+
+</Steps>
+
+## Live pricing
+
+The mint sidebar calls `predict::get_trade_amounts` via `devInspect`
+(off-chain dry-run, no tx, no gas) on every input change with a 350ms
+debounce. You see:
+
+- **Cost** — what you'll pay in dUSDC
+- **Payout** — what you receive if right (== `quantity`)
+- **Implied probability** — `cost / quantity` as a percent
+
+## Range mode
+
+The mint sidebar has a **Binary | Range** toggle. Range mode shows two
+strike grids (Lower / Higher) with disabled overlap states, and the chart
+draws two dashed band lines instead of a single strike line.
+
+<Callout type="warning">
+  Mysten's predict-server doesn't yet index range positions
+  (`/managers/:id/range-positions/summary` returns 404). Mints succeed
+  on-chain but range positions don't appear in the panel yet.
+</Callout>
+
+## SVI volatility surface
+
+`OracleSVIUpdated` events stream the smile parameters. The detail page
+shows them numerically; a future "Surface Studio" view (3-D strike ×
+expiry → IV) is on the [Roadmap](/reference/roadmap).
+
+## Public Predict server
+
+DeepMarket reads from Mysten's hosted indexer:
+
+```
+https://predict-server.testnet.mystenlabs.com
+```
+
+Endpoints used by the frontend:
+
+- `GET /predicts/:id/oracles` — all oracles for the Predict object
+- `GET /oracles/:id/state` — `{oracle, latest_price, latest_svi, ask_bounds}`
+- `GET /oracles/:id/prices` — newest-first time series of spot + forward
+- `GET /managers/:owner` — managers owned by an address
+- `GET /managers/:id/summary` — balances + P&L
+- `GET /managers/:id/positions/summary` — binary positions with status
+
+## dUSDC
+
+DeepBook Predict uses **dUSDC** as the quote asset — *not* the official
+testnet USDC. Request via the
+[dUSDC faucet form](https://tally.so/r/Xx102L).
+
+## Related
+
+- [Spot YES/NO Markets](/products/spot-markets) — the other backend
+- [LLM Agent](/agent/llm-agent) — Claude decides Predict mints
+- [Deployed Contracts](/reference/contracts) — Predict package + oracle ids

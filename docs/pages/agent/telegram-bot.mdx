@@ -1,0 +1,159 @@
+import { Callout, Steps } from 'nextra/components'
+
+# Telegram Bot
+
+DeepMarket's Telegram bot is the **agent's user-facing surface**. It manages
+per-user custodial wallets, mints positions, auto-redeems settled trades, and
+DMs you results. Optional LLM-driven decisions and Walrus-backed memory layer
+on top.
+
+Repo: `bot/` — Node + TypeScript + Telegraf.
+
+## What it does
+
+- **Watcher / notifier** — polls every 30s and alerts on:
+  - Strike crosses (spot crossed a strike you hold)
+  - Near-expiry warnings (≤5 min to settlement, only if you have an open
+    position)
+  - Settlement events (with your won/lost breakdown)
+  - Spot market resolutions
+  - Spot price moves ≥ 5¢ on markets you hold
+- **Per-user custodial wallets** — each Telegram chat has its own Sui
+  keypair, stored encrypted-at-rest in `subs.json`. Generate fresh or
+  import an existing key.
+- **Strategy loop** — 60-second tick. Picks the closest active BTC oracle,
+  asks the LLM agent for a decision (or falls back to a rule), mints up to
+  3 positions per tick.
+- **Auto-redeem** — settled positions are redeemed automatically; you get
+  a 🎉/💔 DM with cost / payout / P&L / digest.
+- **BONKbot-style menus** — inline keyboards that edit in place; `/`
+  autocomplete populated via `setMyCommands`.
+
+## Setup
+
+<Steps>
+
+### Get a bot token
+
+Chat with [@BotFather](https://t.me/BotFather), `/newbot`, save the token.
+
+### Configure env
+
+```bash
+cd bot
+cp .env.example .env
+```
+
+Fill in:
+
+```
+BOT_TOKEN=...                  # required, from BotFather
+ANTHROPIC_API_KEY=...          # enables the LLM agent (optional)
+MEMWAL_ACCOUNT_ID=...          # enables Walrus memory (optional)
+MEMWAL_DELEGATE_KEY=...        # ...
+```
+
+See [LLM Agent](/agent/llm-agent) and [MemWal Memory](/agent/memwal) for the
+optional pieces.
+
+### Run
+
+```bash
+npm install
+npm run dev
+```
+
+On boot you'll see `[strategy] loop running every 60000ms · LLM agent` and
+(if MemWal is configured) `[memwal] connected: ok v0.1.0`.
+
+</Steps>
+
+## User flow
+
+<Steps>
+
+### `/start <sui-addr>`
+
+Registers your Telegram chat against a Sui address. You'll get alerts on
+that address's positions.
+
+### 🤖 Bot trader
+
+Opens the trader sub-menu. First time: tap **🆕 Generate fresh** to create
+a custodial bot wallet, or **📥 Import existing** to paste a
+`suiprivkey…` for a wallet you already control.
+
+<Callout type="warning">
+  Use a **fresh throwaway wallet** for the bot, not your daily-driver key.
+  The bot stores the key in plaintext in `subs.json`.
+</Callout>
+
+### Fund + initialize
+
+Send the bot wallet some SUI (gas) + dUSDC (trade collateral). Then tap
+**⚡ Initialize manager** to create your PredictManager.
+
+### ▶️ Start strategy
+
+The strategy loop begins trading on the next 60-second tick. The bot
+trader menu shows the live state:
+
+```
+Strategy: 🟢 ON  ·  🧠 Claude  ·  🐋 MemWal
+📝 (most recent agent note)
+```
+
+### Rotate wallet
+
+**🔁 Rotate wallet** wipes the current key from bot storage. Confirms via
+plain-text `rotate-yes`. Always **withdraw funds first** (tap 📋 Show key
+to back up the key, transfer SUI + dUSDC out, redeem positions).
+
+</Steps>
+
+## Service fee (optional)
+
+If `BOT_TREASURY_ADDRESS` is set, the bot collects a configurable basis-point
+fee (`BOT_FEE_BPS`, default 100 = 1%) on every mint, transferred to the
+treasury atomically in the same PTB as the trade. Leave the treasury empty
+to disable.
+
+## File layout
+
+```
+bot/src/
+├── index.ts          # Telegraf wiring, menu handlers
+├── config.ts         # env vars
+├── store.ts          # Subscription store (JSON file)
+├── sui.ts            # SuiJsonRpcClient + bot keypair
+├── user-wallet.ts    # per-chat custodial wallet (generate/import/show)
+├── trader.ts         # mintBinary, redeemBinary, manager init
+├── strategy.ts       # 60s loop: pick oracle → agent → mint → record
+├── agent.ts          # Claude SDK wrapper (tool-use decisions)
+├── memory.ts         # local structured memory (trades + notes)
+├── memwal.ts         # Walrus-backed semantic memory wrapper
+├── agent-cap.ts      # on-chain AgentCap integration
+├── menus.ts          # BONKbot-style inline keyboard builders
+├── watchers.ts       # 30s notifier loop
+├── alerts.ts         # alert message + keyboard composers
+├── predict.ts        # Mysten Predict server client
+└── spot.ts           # Spot indexer client
+```
+
+## Notifier vs. Trader
+
+The bot has **two independent loops**:
+
+- **Watchers** (`watchers.ts`) — every 30s, scan oracles + markets + per-user
+  positions, fire alerts. Runs for **all** subscriptions.
+- **Strategy** (`strategy.ts`) — every 60s, mint positions for subscriptions
+  with `strategyEnabled = true`.
+
+You can use the bot purely as a notifier (no strategy) by not generating a
+custodial wallet — `/start <addr>` is enough.
+
+## Related
+
+- [LLM Agent](/agent/llm-agent) — Claude makes the decisions
+- [MemWal Memory](/agent/memwal) — Walrus-backed semantic recall
+- [AgentCap](/agent/agent-cap) — on-chain authorization + audit log

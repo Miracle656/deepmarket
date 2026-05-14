@@ -1,0 +1,145 @@
+import { Callout, Steps, Tabs } from 'nextra/components'
+
+# Getting Started
+
+DeepMarket has three runnable surfaces: the **web app**, the **Telegram bot**,
+and the **indexer**. This page gets each one running locally.
+
+<Callout type="info">
+  You only need the indexer for **Spot YES/NO markets**. DeepBook Predict reads
+  from a public Mysten server, so the Predict surface works without any local
+  backend.
+</Callout>
+
+## Prerequisites
+
+- **Node.js** 20+ and npm
+- **Sui CLI** — for building / deploying Move contracts
+- **Docker Desktop** — only for the indexer (Postgres + Redis)
+- A Sui wallet (Slush, Suiet, etc.) with testnet SUI
+- **dUSDC** for DeepBook Predict — request via the
+  [dUSDC faucet form](https://tally.so/r/Xx102L). This is *not* the official
+  testnet USDC.
+
+## Repository layout
+
+```
+deepmarket/
+├── deepmarket/            # React + Vite frontend
+├── deepmarket_contract/   # Move package (Spot markets + AgentCap)
+├── bot/                   # Telegram bot (Node + TypeScript)
+├── indexer/               # Rust + Axum indexer (Spot markets only)
+└── docs/                  # This documentation site (Nextra)
+```
+
+## Run the web app
+
+<Steps>
+
+### Install dependencies
+
+```bash
+cd deepmarket
+npm install
+```
+
+### Configure environment
+
+Copy the example env and fill in the deployed package id:
+
+```bash
+cp .env.example .env
+```
+
+Key variable: `VITE_PACKAGE_ID` — the deployed `deepmarket_contract` package.
+See [Deployed Contracts](/reference/contracts) for current testnet ids.
+
+### Start the dev server
+
+```bash
+npm run dev -- --port 5174
+```
+
+The app is at `http://localhost:5174`. Connect a wallet and you're trading.
+
+</Steps>
+
+## Run the Telegram bot
+
+<Steps>
+
+### Install + configure
+
+```bash
+cd bot
+npm install
+cp .env.example .env
+```
+
+Fill in at minimum `BOT_TOKEN` (from [@BotFather](https://t.me/BotFather)). To
+enable the LLM agent, also set `ANTHROPIC_API_KEY`. To enable Walrus-backed
+memory, set `MEMWAL_ACCOUNT_ID` + `MEMWAL_DELEGATE_KEY`.
+
+### Start it
+
+```bash
+npm run dev
+```
+
+On boot you'll see the strategy loop start and — if configured — MemWal
+connect. Open the bot in Telegram and send `/start`.
+
+</Steps>
+
+See the [Telegram Bot](/agent/telegram-bot) page for the full command surface.
+
+## Run the indexer (Spot markets only)
+
+<Steps>
+
+### Start Postgres + Redis
+
+```bash
+cd indexer
+docker-compose up -d
+```
+
+### Run the indexer API
+
+```bash
+cargo run
+```
+
+It serves on port `3000` and the frontend reads from it for Spot market state.
+
+</Steps>
+
+## Build the Move contracts
+
+<Callout type="warning">
+  On Windows the Sui CLI typically runs inside WSL. Build with
+  `wsl --cd <path> -- sui move build`.
+</Callout>
+
+```bash
+cd deepmarket_contract
+sui move build
+```
+
+To upgrade the deployed package (requires the `UpgradeCap`):
+
+```bash
+sui client upgrade --upgrade-capability <CAP_ID> --gas-budget 500000000
+```
+
+<Callout type="warning">
+  Before each upgrade, bump `published-at` in `Move.toml` to the **latest**
+  package id, or you'll get `PackageIDDoesNotMatch`.
+</Callout>
+
+## Next steps
+
+- [Architecture](/architecture) — how the pieces fit together
+- [Spot YES/NO Markets](/products/spot-markets) — create + trade outcome markets
+- [DeepBook Predict](/products/deepbook-predict) — BTC binary options
+- [The Agent](/agent/telegram-bot) — autonomous trading

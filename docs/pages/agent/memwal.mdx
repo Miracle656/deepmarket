@@ -1,0 +1,142 @@
+import { Callout, Steps } from 'nextra/components'
+
+# MemWal Memory
+
+DeepMarket's agent has **two layers of memory**:
+
+1. **Structured local memory** (`bot/src/memory.ts`) — JSON-on-disk, holds
+   stats the agent reasons over: wins/losses, P&L by oracle, hourly exposure.
+2. **MemWal semantic memory** (`bot/src/memwal.ts`) — Walrus-backed,
+   end-to-end-encrypted via Seal, vector-indexed for **recall by meaning**.
+
+The two run side-by-side. Structured memory powers numerical aggregates;
+MemWal powers narrative recall.
+
+## What is MemWal
+
+[MemWal](https://memwal.ai) is a privacy-first AI memory SDK by
+CommandOSS Labs / Mysten. It stores text memories on **Walrus** (decentralized
+blob storage on Sui), encrypts them with **Seal**, enforces ownership
+**on-chain** via a Sui smart contract, and retrieves them via **semantic
+vector search**.
+
+For DeepMarket, that means **the agent can find past trades by situational
+similarity** — not just "the last 8 trades" but "trades that look like this
+one."
+
+## Two layers, one prompt
+
+Each decision tick:
+
+1. The structured memory feeds aggregate stats into the prompt:
+   - Total trades, settled, wins, losses, net P&L
+   - By-oracle breakdowns
+   - Last 8 trades with outcomes
+2. MemWal `recall(query)` fetches the **top-K most relevant past trades**
+   for the current situation:
+   ```
+   query = "chat {chatId} {asset}-{bucket} binary option near ${spot},
+            {minutes} minutes to expiry, recent decisions and outcomes"
+   ```
+   Results are dropped into a `# Semantic recall (from MemWal)` section
+   of the prompt — Claude sees them alongside the structured stats.
+
+## What gets remembered
+
+Every **settled** trade is mirrored to MemWal as one natural-language line:
+
+```
+[2026-05-13 19:20] chat 6151327172: minted DOWN @ $80560 on BTC-1h.
+Entry spot $80537 (in the money). Cover $0.50, cost $0.27.
+Outcome: LOST — lost $0.27.
+Rationale at entry: Strike slightly above spot gives DOWN a small edge with
+16min to expiry.
+```
+
+Every salient field is in plain English so the embedding can match on
+situational similarity later.
+
+## Configuration
+
+```
+MEMWAL_ACCOUNT_ID=0x...
+MEMWAL_DELEGATE_KEY=...
+MEMWAL_SERVER_URL=https://relayer.staging.memwal.ai
+MEMWAL_NAMESPACE=deepmarket-bot
+MEMWAL_RECALL_LIMIT=5
+```
+
+Get the account ID + delegate key at **[https://staging.memwal.ai](https://staging.memwal.ai)**
+(testnet) or **[https://memwal.ai](https://memwal.ai)** (mainnet). The
+delegate is an Ed25519 keypair registered on your MemWalAccount.
+
+If `MEMWAL_ACCOUNT_ID` or `MEMWAL_DELEGATE_KEY` is empty, MemWal is silently
+disabled — the bot still trades, just without semantic recall.
+
+## SDK surface
+
+```ts
+import { MemWal } from '@mysten-incubation/memwal'
+
+const memwal = MemWal.create({
+  key: CONFIG.MEMWAL_DELEGATE_KEY,
+  accountId: CONFIG.MEMWAL_ACCOUNT_ID,
+  serverUrl: CONFIG.MEMWAL_SERVER_URL,
+  namespace: 'deepmarket-bot',
+})
+
+await memwal.remember('User prefers fading near-spot DOWN bets')  // fire-and-forget
+const res = await memwal.recall('BTC-1h trades around $80000', 5)
+```
+
+## Health check at startup
+
+The bot calls `memwal.health()` on boot and logs the result:
+
+```
+[memwal] connected: ok v0.1.0
+```
+
+If MemWal is disabled or unreachable:
+
+```
+[memwal] disabled (MEMWAL_ACCOUNT_ID or DELEGATE_KEY missing)
+```
+
+## Why both layers
+
+| | Structured (`memory.ts`) | MemWal |
+|---|---|---|
+| Storage | Local JSON | Walrus blobs (encrypted) |
+| Lookup | Recent-N, aggregates | Vector recall by meaning |
+| Strength | Stats: win-rate, exposure, P&L | "Find me trades like this one" |
+| Survives a wipe | No (local file) | Yes (Sui + Walrus) |
+| Encrypted | No | Yes (Seal) |
+| Cross-host | No | Yes — multiple bot instances can share the same MemWal account |
+
+You could ship without MemWal — the bot still trades and the structured
+memory still works. MemWal upgrades the agent from "remembers the last
+ten" to "remembers everything relevant."
+
+## Privacy
+
+- The MemWal account owns the data — your `MEMWAL_DELEGATE_KEY` is the
+  only credential that can write or read it.
+- Blobs on Walrus are **Seal-encrypted client-side** before upload.
+- The MemWal relayer never sees plaintext.
+
+## Status indicator
+
+When MemWal is wired up, the bot's trader menu shows:
+
+```
+Strategy: ON · 🧠 Claude · 🐋 MemWal
+```
+
+The 🐋 emoji is your at-a-glance confirmation that semantic recall is live.
+
+## Related
+
+- [LLM Agent](/agent/llm-agent) — the consumer of MemWal recall
+- [Telegram Bot](/agent/telegram-bot) — the env var setup
+- [MemWal docs](https://docs.memwal.ai)

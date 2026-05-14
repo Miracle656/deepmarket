@@ -1,0 +1,101 @@
+import { Callout } from 'nextra/components'
+
+# Roadmap
+
+DeepMarket is built around the **Sui Overflow 2026** hackathon plan
+(deadline **2026-06-21**), but the architecture is meant to ship past it.
+This page tracks what's done, what's next, and what's parked.
+
+## Hackathon plan (6 weeks)
+
+| Week | Theme | Status |
+|---|---|---|
+| 1 | Chat layer (Sui Stack Messaging + Walrus + Seal) | ✅ Done |
+| 2 | DeepBook Predict integration (mint / redeem / withdraw / range / chart) | ✅ Done |
+| 3 | Telegram bot + notifier-mode agent + MemWal memory | ✅ Done |
+| 4 | Move policy object (AgentCap, capped budget, on-chain log, owner revocation) | ✅ Done — **verified live on testnet** |
+| 5 | Nautilus TEE attestation (verifiable LLM decisions) | 🟡 In progress |
+| 6 | Polish, DeFi & Payments framing, demo video, mainnet deploy, submission | 🟡 Upcoming |
+
+## Track coverage
+
+DeepMarket targets all four Sui Overflow 2026 prize tracks. Status of each:
+
+- **Walrus** — ✅ per-market chat (Walrus + Seal) + MemWal-backed agent memory
+- **Agentic Web** — ✅ LLM agent + Move policy object + capped budget + on-chain audit log + owner revocation. TEE attestation pending.
+- **DeepBook** — ✅ Predict integration alongside V3 spot markets — chat-based + Telegram-driven Predict frontend
+- **DeFi & Payments** — ✅ DeepMarket itself as a novel prediction-market protocol; agent's autonomous redemption as the programmable-money angle
+
+## What's verified live
+
+- Spot market creation + mint + redeem on testnet
+- Predict full lifecycle: manager init → deposit → mint → redeem → withdraw
+- Per-market chat with two wallets, end-to-end, auto-sign + invite chain
+- Telegram bot trading with 9 wins / 1 hour at 95% win rate (rule-based)
+- LLM agent: Claude decisions, batched mints, MemWal recall, win-rate cooldown
+- AgentCap end-to-end: create → discover → record → on-chain audit log
+
+## What's pending
+
+### Short-term (hackathon-critical)
+
+1. **AgentCap revoke test** — code path exists, awaiting one click-through to
+   verify on-chain
+2. **Vercel `VITE_PACKAGE_ID`** — bump the dashboard env var to v3 so the
+   deployed `/agent` page works
+3. **Nautilus TEE attestation** — wrap the Claude call in a TEE so the model
+   + prompt are verifiable. Forking `nautical`.
+4. **Demo video** — ≤5 min, YouTube preferred, the canonical artifact
+5. **Pitch deck refresh** — update slides to reflect AgentCap + MemWal live
+
+### Medium-term (post-hackathon)
+
+- **Tokenized share token on `PredictManager`** — composable position object,
+  unlocks vault strategies + structured products
+- **zkLogin support in the chat relayer** — Slush/Google sign-in is currently
+  rejected by the upstream relayer (`Unknown signature scheme flag: 0x05`)
+- **Range-position panel** — waiting on
+  `predict-server/.../range-positions/summary` endpoint
+- **Surface Studio** — 3-D vol surface viewer (strike × expiry → IV) from
+  `OracleSVIUpdated` events
+- **Vol-arb bot** — read Polymarket / Deribit smiles, signal Predict
+  mispricings; signal-first, execute-on-Predict-only
+
+### Long-term / parked
+
+- Auto-deposit only the gap (not full quantity each mint) — bot optimization
+- Manual chat refresh button (clears `SYNC_PENDING`)
+- Strategy for surfacing relayer subscription health
+- Indexer URL `VITE_INDEXER_URL` env var parameterization for hosted frontend
+- DEEP token accumulation for V3 pool creation on demo markets
+- Down-direction strategy mode for the rule-based bot (currently always UP)
+- PLP risk dashboard — LP-side analytics for Predict's vault
+
+## Mainnet
+
+| Component | Mainnet readiness |
+|---|---|
+| DeepMarket spot contracts | ✅ Ready — same code, deploy on day one |
+| Chat (Sui Stack Messaging) | ✅ Already on mainnet |
+| Telegram bot | ✅ Code-portable; just swap RPC + package ids |
+| AgentCap | ✅ Ready — re-publish the package |
+| **DeepBook Predict** | ⏳ Mainnet launch is on Mysten's roadmap; we follow |
+| MemWal | ✅ Mainnet endpoint exists |
+
+## Submission requirements (Sui Overflow 2026)
+
+- Public GitHub repo ✅
+- Demo video (≤5 min) 🟡
+- Project logo ✅ (`deepmarket.png`)
+- Testnet deployment + package id ✅
+- Website (recommended) ✅ (Vercel deploy)
+
+## Judging weights
+
+- **Real-World Application** — 50%
+- **Product & UX** — 20%
+- **Technical Implementation** — 20%
+- **Presentation & Vision** — 10%
+
+The chat-augmented + agent narrative is the real-world story; that's what
+the demo video has to land.

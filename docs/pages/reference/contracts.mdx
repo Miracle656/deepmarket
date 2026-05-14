@@ -1,0 +1,112 @@
+import { Callout } from 'nextra/components'
+
+# Deployed Contracts
+
+All ids below are on **Sui testnet**. Mainnet redeploy is planned post-hackathon.
+
+## DeepMarket contract (v3 — current)
+
+The DeepMarket Move package. Includes `market_factory`, `yes_token`,
+`no_token`, and `agent_cap`.
+
+| | |
+|---|---|
+| **Package v3** | `0x50a58add3954967d6c6480469b9fa78f3f7bb21fed9cda88323cdf7a87771c29` |
+| **Modules** | `agent_cap`, `market_factory`, `no_token`, `yes_token` |
+| **MarketRegistry** (shared) | `0x7e1eee1313ff5f27da5230372eb4560bad4e946bda06878134995203d489eb1d` |
+| **AdminCap** | `0x7ee52b8cf3402349b6f65a8d98f9231cf1d3e0366f333c7408bfe3a3cda1450c` |
+| **UpgradeCap** | `0xbe6b8bcd0ae60eb084427a4095aef779cc0ec1697bf924565fc13328046c541c` |
+| **YES TreasuryCap** | `0x447cda39c466b249b132948a8970435a345997a5e514f3235d560472b72438c9` |
+| **NO TreasuryCap** | `0x205c400b5ca31512027e6f8d0b4fce1fe812cdf06b8cc85ac31e34fefaeb0f57` |
+
+## Upgrade chain
+
+Each upgrade's ticket references the immediately-prior package id. Type
+identity sticks with the version where a module was first published.
+
+| Version | Package ID | Notes |
+|---|---|---|
+| v1 (2026-03-12) | `0x6d968a4810498a16f18beca840667350ed5aafc119c3d8cbd3033676b622c774` | Original publish. `market_factory`, `yes_token`, `no_token`. |
+| v2 (2026-05-13) | `0xf2189af211ace44b5365d3c0cb8a8b96137897957fa53b7f83570db0f1f10068` | Added `agent_cap` module. **Type origin for agent_cap lives here.** |
+| v3 (2026-05-14) | `0x50a58add3954967d6c6480469b9fa78f3f7bb21fed9cda88323cdf7a87771c29` | `agent_cap::create` switched to `transfer::share_object` so the agent can reference the cap. |
+
+<Callout type="warning">
+  Before each upgrade, bump `published-at` in `Move.toml` to the **latest**
+  package id. Otherwise `sui client upgrade` errors with
+  `PackageIDDoesNotMatch`.
+</Callout>
+
+## DeepBook V3 (Mysten — testnet)
+
+DeepMarket's Spot YES/NO markets use DeepBook V3 as the matching engine.
+These ids are stable and shared with the rest of Sui DeFi.
+
+| | |
+|---|---|
+| **DeepBook Package** (canonical) | `0x22be4cade64bf2d02412c7e8d0e8beea2f78828b948118d46735315409371a3c` |
+| **DeepBook Registry** | `0x7c256edbda983a2cd6f946655f4bf3f00a41043993781f8674a7046e8c0e11d1` |
+| **DEEP token type** | `0x36dbef866a1d62bf7328989a10fb2f07d769f4ee587c0de4a0a256e57e0a58a8::deep::DEEP` |
+| **DEEP Treasury** | `0x69fffdae0075f8f71f4fa793549c11079266910e8905169845af1f5d00e09dcb` |
+
+<Callout type="info">
+  The registry's type shows `0xfb28c4cb…::registry::Registry` — that's the
+  upgraded implementation package. `0x22be4cade…` remains the canonical
+  package id for function calls. Don't change it in your config.
+</Callout>
+
+### Common V3 pools (testnet)
+
+- **DEEP / SUI** — `0x48c95963e9eac37a316b7ae04a0deb761bcdcc2b67912374d6036e7f0e9bae9f` ✅ live
+- **DEEP / DBUSDC** — `0xe86b991f8632217505fd859445f9803967ac84a9d4a1219065bf191fcb74b622`
+- **SUI / DBUSDC** — `0x1c19362ca52b8ffd7a33cee805a67d40f31e6ba303753fd3a4cfdfacea7163a5`
+
+## DeepBook Predict (Mysten — testnet)
+
+Deployed and maintained by Mysten. DeepMarket integrates it as a backend; we
+don't own these.
+
+| | |
+|---|---|
+| **Predict package** | `0xf5ea2b3749c65d6e56507cc35388719aadb28f9cab873696a2f8687f5c785138` |
+| **Predict object** | `0xc8736204d12f0a7277c86388a68bf8a194b0a14c5538ad13f22cbd8e2a38028a` |
+| **dUSDC type** | `0xe95040085976bfd54a1a07225cd46c8a2b4e8e2b6732f140a0fc49850ba73e1a::dusdc::DUSDC` |
+| **Predict server** | `https://predict-server.testnet.mystenlabs.com` |
+
+`Oracle` and `PredictManager` ids are user-specific and discovered at runtime.
+
+## Quote assets
+
+| Backend | Quote |
+|---|---|
+| Spot YES/NO | SUI (testnet) |
+| DeepBook Predict | dUSDC (request via the [faucet form](https://tally.so/r/Xx102L)) |
+
+## Web app `.env` keys
+
+```
+VITE_PACKAGE_ID=0x50a58add3954967d6c6480469b9fa78f3f7bb21fed9cda88323cdf7a87771c29
+VITE_MARKET_REGISTRY=0x7e1eee1313ff5f27da5230372eb4560bad4e946bda06878134995203d489eb1d
+VITE_ADMIN_CAP_ID=0x7ee52b8cf3402349b6f65a8d98f9231cf1d3e0366f333c7408bfe3a3cda1450c
+VITE_UPGRADE_CAP=0xbe6b8bcd0ae60eb084427a4095aef779cc0ec1697bf924565fc13328046c541c
+VITE_YES_TREASURY_CAP=0x447cda39c466b249b132948a8970435a345997a5e514f3235d560472b72438c9
+VITE_NO_TREASURY_CAP=0x205c400b5ca31512027e6f8d0b4fce1fe812cdf06b8cc85ac31e34fefaeb0f57
+VITE_DEEPBOOK_PACKAGE_ID=0x22be4cade64bf2d02412c7e8d0e8beea2f78828b948118d46735315409371a3c
+VITE_DEEPBOOK_REGISTRY_ID=0x7c256edbda983a2cd6f946655f4bf3f00a41043993781f8674a7046e8c0e11d1
+VITE_DEEP_TOKEN_TYPE=0x36dbef866a1d62bf7328989a10fb2f07d769f4ee587c0de4a0a256e57e0a58a8::deep::DEEP
+VITE_NETWORK=testnet
+VITE_RELAYER_URL=http://localhost:3001
+```
+
+## Bot `.env` keys
+
+```
+BOT_TOKEN=                                  # from @BotFather
+ANTHROPIC_API_KEY=                          # LLM agent (optional)
+AGENT_MODEL=claude-opus-4-7
+AGENT_MAX_USD_PER_HOUR=5
+AGENT_CAP_PACKAGE_ID=0x50a58add…            # v3
+AGENT_CAP_TYPE_ORIGIN=0xf2189af2…           # v2 (event type origin)
+MEMWAL_ACCOUNT_ID=                          # Walrus memory (optional)
+MEMWAL_DELEGATE_KEY=
+MEMWAL_SERVER_URL=https://relayer.staging.memwal.ai
+```

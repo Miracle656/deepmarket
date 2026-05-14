@@ -1,0 +1,73 @@
+import { Callout, Cards } from 'nextra/components'
+
+# DeepMarket
+
+**Social, agent-augmented prediction trading on Sui.**
+
+DeepMarket is one frontend over two prediction-market backends, wrapped in a
+social layer and driven — optionally — by an autonomous AI agent. It turns
+isolated bets into a trading floor: every market has an encrypted chat room,
+and an LLM agent can trade on your behalf within on-chain spending limits you
+control.
+
+<Callout type="info">
+  Live on **Sui testnet** today. Built for **Sui Overflow 2026**, targeting all
+  four prize tracks: Walrus, Agentic Web, DeepBook, and DeFi & Payments.
+</Callout>
+
+## What's in the box
+
+DeepMarket is not a single app — it's a stack of composable pieces that share
+one identity and one frontend.
+
+<Cards>
+  <Cards.Card title="Spot YES/NO Markets" href="/products/spot-markets" />
+  <Cards.Card title="DeepBook Predict" href="/products/deepbook-predict" />
+  <Cards.Card title="Encrypted Market Chat" href="/products/chat" />
+  <Cards.Card title="Telegram Bot" href="/agent/telegram-bot" />
+  <Cards.Card title="LLM Trading Agent" href="/agent/llm-agent" />
+  <Cards.Card title="AgentCap" href="/agent/agent-cap" />
+</Cards>
+
+## The two backends
+
+|  | Spot YES/NO | DeepBook Predict |
+|---|---|---|
+| **What it is** | Permissionless outcome-token markets | Vol-surface-priced BTC binary options |
+| **Matching** | DeepBook V3 CLOB | Vault takes the other side |
+| **Question type** | Anyone's "Will X happen?" | Every strike + expiry on a live SVI surface |
+| **Settlement** | Oracle / admin resolution | Hourly rolling BTC oracles |
+| **Quote asset** | SUI | dUSDC |
+| **Contract** | DeepMarket's own Move package | Mysten's DeepBook Predict (testnet) |
+
+Both render in the same React frontend, share the same wallet, and feed the
+same Telegram bot and AI agent.
+
+## The social + agent layer
+
+- **Encrypted per-market chat** — every market gets an end-to-end-encrypted
+  room via Sui Stack Messaging (Walrus storage + Seal encryption). One signature
+  enables zero-popup auto-signing.
+- **Telegram bot** — per-user custodial wallets, inline-keyboard trading,
+  settlement DMs, and an autonomous strategy loop.
+- **LLM agent** — Claude decides direction, strike, and size each tick, with a
+  written rationale and a semantic memory of past trades stored on Walrus.
+- **AgentCap** — an on-chain policy object: you authorize the agent with a
+  daily spend cap and expiry, every decision is logged on-chain, and you can
+  revoke it in one transaction.
+
+## Why it exists
+
+Prediction markets today are fragmented and shallow — slow settlement, narrow
+binary outcomes, no real volatility surface, no social context, and no path to
+autonomous participation. DeepMarket's bet is that the next phase of prediction
+markets is **composable, social, and agentic**:
+
+1. **Composable** — two backends, one frontend, primitives that plug into the
+   wider Sui DeFi ecosystem.
+2. **Social** — markets are conversations, not just order books.
+3. **Agentic** — an AI agent can participate on your behalf, under on-chain
+   constraints you set and can revoke.
+
+Start with [Getting Started](/getting-started), or jump to the
+[Architecture](/architecture) overview.
