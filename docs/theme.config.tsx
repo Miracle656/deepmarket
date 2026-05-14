@@ -36,11 +36,19 @@ const config: DocsThemeConfig = {
     saturation: 100,
   },
   banner: {
-    key: 'sui-overflow-2026',
+    key: 'deepmarket-live',
     dismissible: true,
     content: (
       <span>
-        DeepMarket is live on Sui testnet — built for Sui Overflow 2026.
+        DeepMarket is live on Sui testnet.{' '}
+        <a
+          href="https://deepmarket-psi.vercel.app"
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{ textDecoration: 'underline' }}
+        >
+          Open the app ↗
+        </a>
       </span>
     ),
   },

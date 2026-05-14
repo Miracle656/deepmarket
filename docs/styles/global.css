@@ -252,11 +252,14 @@ html.dark .nextra-content [class*='nx-rounded-lg'][href]:hover {
     box-shadow: 0 0 12px var(--dm-blue);
 }
 .dm-hero-title {
-    font-size: clamp(2.2rem, 5vw, 3.6rem);
+    font-size: clamp(2rem, 4.2vw, 2.9rem);
     font-weight: 900;
-    letter-spacing: -0.035em;
-    line-height: 1.05;
+    letter-spacing: -0.03em;
+    /* Bumped from 1.05 — at the larger clamp values, descenders from
+       line 1 ('g' in 'augmented') were intruding into line 2. */
+    line-height: 1.18;
     margin: 0 !important;
+    padding-bottom: 2px; /* keep gradient descenders from being clipped */
 }
 .dm-hero-title span {
     background: linear-gradient(
