@@ -12,7 +12,7 @@ import {
     useSuiClient,
     useSignAndExecuteTransaction,
 } from '@mysten/dapp-kit';
-import { ShieldCheck, ShieldOff, Clock, Activity, AlertCircle } from 'lucide-react';
+import { ShieldCheck, ShieldOff, Activity, AlertCircle } from 'lucide-react';
 import {
     findAgentCapsByOwner,
     getDecisionLog,
@@ -59,6 +59,11 @@ export default function AgentAuthorizePage() {
 
     useEffect(() => {
         void load();
+        // Poll so the on-chain decision log + cap state stay live without a
+        // manual refresh. The bot mints on a ~60s tick; 20s polling catches
+        // new AgentDecisionMade events reasonably fast.
+        const id = setInterval(() => void load(), 20_000);
+        return () => clearInterval(id);
     }, [load]);
 
     const onCreate = async () => {
@@ -144,27 +149,76 @@ export default function AgentAuthorizePage() {
             {/* ACTIVE CAP */}
             {activeCap && (
                 <div className="predict-mint-card" style={{ marginBottom: 16 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-                        <ShieldCheck size={18} color="var(--yes)" />
-                        <strong style={{ fontSize: '1rem' }}>Agent authorized</strong>
-                    </div>
-                    <div style={{ fontSize: '0.85rem', lineHeight: 1.9 }}>
-                        <div>Cap: <code>{activeCap.capId.slice(0, 12)}…{activeCap.capId.slice(-6)}</code></div>
-                        <div>Agent wallet: <code>{activeCap.agent.slice(0, 12)}…{activeCap.agent.slice(-6)}</code></div>
-                        <div>Daily spend cap: <strong>${activeCap.dailySpendCapUsd.toFixed(2)}</strong></div>
-                        <div>
-                            <Clock size={12} style={{ verticalAlign: 'middle' }} />{' '}
-                            Expires {new Date(activeCap.expiresAtMs).toLocaleString()}
-                        </div>
-                    </div>
-                    <button
-                        className="btn btn-danger"
-                        style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 6 }}
-                        disabled={busy}
-                        onClick={() => onRevoke(activeCap.capId)}
+                    {/* header row — title left, ACTIVE pill right */}
+                    <div
+                        style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            marginBottom: 16,
+                        }}
                     >
-                        <ShieldOff size={14} /> Revoke authorization
-                    </button>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <ShieldCheck size={18} color="var(--yes)" />
+                            <strong style={{ fontSize: '1rem' }}>Agent authorized</strong>
+                        </div>
+                        <span
+                            style={{
+                                fontSize: '0.66rem',
+                                fontWeight: 700,
+                                letterSpacing: '0.08em',
+                                color: 'var(--yes)',
+                                background: 'var(--yes-dim)',
+                                border: '1px solid var(--yes-border)',
+                                borderRadius: 100,
+                                padding: '3px 10px',
+                            }}
+                        >
+                            ● ACTIVE
+                        </span>
+                    </div>
+
+                    {/* key/value rows — flex so the value sits right next to the label */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10, fontSize: '0.84rem' }}>
+                        {([
+                            ['Cap object', <code key="c">{activeCap.capId.slice(0, 14)}…{activeCap.capId.slice(-6)}</code>],
+                            ['Agent wallet', <code key="a">{activeCap.agent.slice(0, 14)}…{activeCap.agent.slice(-6)}</code>],
+                            ['Daily spend cap', <strong key="d">${activeCap.dailySpendCapUsd.toFixed(2)}</strong>],
+                            ['Expires', <span key="e">{new Date(activeCap.expiresAtMs).toLocaleString()}</span>],
+                        ] as const).map(([label, value]) => (
+                            <div key={label} style={{ display: 'flex', gap: 12, alignItems: 'baseline' }}>
+                                <span
+                                    style={{
+                                        color: 'var(--text-muted)',
+                                        minWidth: 130,
+                                        flexShrink: 0,
+                                    }}
+                                >
+                                    {label}
+                                </span>
+                                {value}
+                            </div>
+                        ))}
+                    </div>
+
+                    <div
+                        style={{
+                            marginTop: 16,
+                            paddingTop: 14,
+                            borderTop: '1px solid var(--border-base)',
+                            display: 'flex',
+                            justifyContent: 'flex-end',
+                        }}
+                    >
+                        <button
+                            className="btn btn-danger"
+                            style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+                            disabled={busy}
+                            onClick={() => onRevoke(activeCap.capId)}
+                        >
+                            <ShieldOff size={14} /> Revoke authorization
+                        </button>
+                    </div>
                 </div>
             )}
 
