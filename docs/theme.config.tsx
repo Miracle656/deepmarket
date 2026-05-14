@@ -65,6 +65,17 @@ const config: DocsThemeConfig = {
           content="Social, agent-augmented prediction trading on Sui."
         />
         <link rel="icon" href="/deepmarket.png" />
+        {/* Brand fonts — mirror the main app's typography */}
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link
+          rel="preconnect"
+          href="https://fonts.gstatic.com"
+          crossOrigin=""
+        />
+        <link
+          rel="stylesheet"
+          href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Space+Mono:wght@400;700&family=Doto:wght@400..900&display=swap"
+        />
       </>
     )
   },

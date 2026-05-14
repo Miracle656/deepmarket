@@ -1,0 +1,286 @@
+/* ─────────────────────────────────────────────────────────────────────────
+   DeepMarket docs — brand layer on top of nextra-theme-docs.
+
+   Mirrors the main app's palette (deepmarket/src/index.css):
+     bg-root  #04080f   bg-nav  #060c17   bg-panel  #0a1628   bg-card  #0d1f3c
+     yes/blue #1c6fff   no/rose #ff4d6a
+     text     #e8edf5   muted   #7b8ea8
+     fonts    Inter (body) · Doto (display numbers) · Space Mono (mono)
+   ──────────────────────────────────────────────────────────────────────── */
+
+:root {
+    --dm-bg-root: #04080f;
+    --dm-bg-nav: #060c17;
+    --dm-bg-panel: #0a1628;
+    --dm-bg-card: #0d1f3c;
+    --dm-blue: #1c6fff;
+    --dm-blue-glow: rgba(28, 111, 255, 0.25);
+    --dm-rose: #ff4d6a;
+    --dm-text: #e8edf5;
+    --dm-text-muted: #7b8ea8;
+    --dm-border: rgba(255, 255, 255, 0.08);
+    --dm-border-strong: rgba(255, 255, 255, 0.14);
+    --dm-grid-line: rgba(28, 111, 255, 0.06);
+}
+
+/* Global font family — apply Inter to body text everywhere */
+html,
+body {
+    font-family:
+        'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI',
+        sans-serif !important;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+code,
+pre,
+kbd,
+.nextra-code-block,
+.nextra-filetree {
+    font-family:
+        'Space Mono', ui-monospace, 'Cascadia Mono', 'JetBrains Mono',
+        Consolas, monospace !important;
+}
+
+/* ── Dark theme — deepen the background + blueprint grid ─────────────── */
+
+html.dark {
+    --nextra-primary-hue: 217deg;
+    --nextra-primary-saturation: 100%;
+    --nextra-bg: 4 8 15; /* #04080f as space-separated for tailwind/nextra */
+}
+
+html.dark body {
+    background-color: var(--dm-bg-root);
+    color: var(--dm-text);
+    background-image:
+        linear-gradient(
+            var(--dm-grid-line) 1px,
+            transparent 1px
+        ),
+        linear-gradient(
+            90deg,
+            var(--dm-grid-line) 1px,
+            transparent 1px
+        );
+    background-size: 48px 48px;
+    background-position: -1px -1px;
+}
+
+/* Nav bar: darker, glassier */
+html.dark .nextra-nav-container,
+html.dark .nextra-nav-container-blur {
+    background-color: rgba(6, 12, 23, 0.78) !important;
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-bottom: 1px solid var(--dm-border);
+}
+
+/* Banner: branded gradient */
+html.dark .nextra-banner-container {
+    background:
+        linear-gradient(
+            90deg,
+            rgba(28, 111, 255, 0.18) 0%,
+            rgba(28, 111, 255, 0.06) 50%,
+            rgba(255, 77, 106, 0.10) 100%
+        ) !important;
+    border-bottom: 1px solid rgba(28, 111, 255, 0.25);
+    color: var(--dm-text);
+}
+
+/* Sidebar — deeper bg, branded active state */
+html.dark aside.nextra-sidebar-container {
+    background-color: rgba(10, 22, 40, 0.55) !important;
+    border-right: 1px solid var(--dm-border);
+}
+
+html.dark .nextra-sidebar-container a:hover {
+    color: var(--dm-blue) !important;
+    background-color: rgba(28, 111, 255, 0.08) !important;
+}
+
+html.dark .nextra-sidebar-container a.active,
+html.dark .nextra-sidebar-container li.active > a {
+    color: var(--dm-blue) !important;
+    background:
+        linear-gradient(
+            90deg,
+            rgba(28, 111, 255, 0.18),
+            rgba(28, 111, 255, 0.06)
+        ) !important;
+    border-left: 2px solid var(--dm-blue);
+    font-weight: 600;
+}
+
+/* TOC right rail */
+html.dark .nextra-toc a:hover {
+    color: var(--dm-blue) !important;
+}
+
+/* ── Content area styling ────────────────────────────────────────────── */
+
+/* Headings — tighter tracking, brand weight */
+html.dark .nextra-content h1 {
+    font-weight: 900;
+    letter-spacing: -0.035em;
+    background: linear-gradient(
+        90deg,
+        var(--dm-text) 0%,
+        #b9d1ff 70%,
+        var(--dm-blue) 100%
+    );
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+html.dark .nextra-content h2,
+html.dark .nextra-content h3 {
+    letter-spacing: -0.02em;
+}
+
+/* Links — solid brand blue */
+html.dark .nextra-content a {
+    color: var(--dm-blue);
+    text-decoration: none;
+    border-bottom: 1px solid rgba(28, 111, 255, 0.25);
+    transition: border-color 150ms ease;
+}
+html.dark .nextra-content a:hover {
+    border-bottom-color: var(--dm-blue);
+}
+
+/* Inline code — branded */
+html.dark .nextra-content :not(pre) > code {
+    background: rgba(28, 111, 255, 0.10) !important;
+    border: 1px solid rgba(28, 111, 255, 0.25) !important;
+    color: #a8c5ff !important;
+    border-radius: 4px;
+    padding: 1px 6px;
+    font-size: 0.86em;
+}
+
+/* Code blocks — deeper panel + accent border */
+html.dark .nextra-code-block,
+html.dark pre {
+    background: var(--dm-bg-card) !important;
+    border: 1px solid var(--dm-border) !important;
+    border-radius: 10px !important;
+    box-shadow: 0 1px 0 rgba(28, 111, 255, 0.12) inset;
+}
+
+/* Tables — branded headers */
+html.dark .nextra-content table {
+    border: 1px solid var(--dm-border);
+    border-radius: 10px;
+    overflow: hidden;
+}
+html.dark .nextra-content thead {
+    background: rgba(28, 111, 255, 0.08);
+}
+html.dark .nextra-content th {
+    color: var(--dm-text) !important;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    border-bottom: 1px solid rgba(28, 111, 255, 0.25) !important;
+}
+html.dark .nextra-content td,
+html.dark .nextra-content th {
+    border-color: var(--dm-border) !important;
+}
+
+/* Callouts — branded edges */
+html.dark .nextra-content .nx-bg-blue-100,
+html.dark .nextra-content [class*='bg-blue'] {
+    background-color: rgba(28, 111, 255, 0.10) !important;
+}
+html.dark .nextra-content [class*='border-blue'] {
+    border-color: rgba(28, 111, 255, 0.45) !important;
+}
+html.dark .nextra-content [class*='border-yellow'] {
+    border-color: rgba(255, 160, 0, 0.45) !important;
+}
+
+/* Cards — make them feel like the app's predict-mint-card */
+html.dark .nextra-content [class*='nx-rounded-lg'][href] {
+    background: var(--dm-bg-panel) !important;
+    border: 1px solid var(--dm-border) !important;
+    transition:
+        border-color 150ms ease,
+        transform 150ms ease,
+        box-shadow 150ms ease;
+}
+html.dark .nextra-content [class*='nx-rounded-lg'][href]:hover {
+    border-color: rgba(28, 111, 255, 0.6) !important;
+    transform: translateY(-2px);
+    box-shadow: 0 12px 32px -12px var(--dm-blue-glow);
+}
+
+/* ── Hero block on the home page ─────────────────────────────────────── */
+
+.dm-hero {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding: 36px 0 22px;
+    border-bottom: 1px solid var(--dm-border);
+    margin-bottom: 32px;
+}
+.dm-hero-eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--dm-blue);
+    background: rgba(28, 111, 255, 0.12);
+    border: 1px solid rgba(28, 111, 255, 0.3);
+    padding: 4px 12px;
+    border-radius: 999px;
+    width: max-content;
+}
+.dm-hero-eyebrow::before {
+    content: '';
+    width: 6px;
+    height: 6px;
+    border-radius: 999px;
+    background: var(--dm-blue);
+    box-shadow: 0 0 12px var(--dm-blue);
+}
+.dm-hero-title {
+    font-size: clamp(2.2rem, 5vw, 3.6rem);
+    font-weight: 900;
+    letter-spacing: -0.035em;
+    line-height: 1.05;
+    margin: 0 !important;
+}
+.dm-hero-title span {
+    background: linear-gradient(
+        90deg,
+        #4d9fff 0%,
+        var(--dm-blue) 40%,
+        #a78bfa 100%
+    );
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+.dm-hero-sub {
+    font-size: 1.05rem;
+    color: var(--dm-text-muted);
+    max-width: 640px;
+    line-height: 1.65;
+}
+
+/* ── Light theme — keep it readable but still feel branded ───────────── */
+
+html.light body {
+    background-color: #f7f9fc;
+}
+html.light .nextra-content a {
+    color: var(--dm-blue);
+}
