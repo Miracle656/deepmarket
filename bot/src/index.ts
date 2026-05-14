@@ -386,7 +386,10 @@ async function main() {
     // Plain text route:
     //   - If pendingImport is set → treat as private key (Generate/Import flow)
     //   - Else if text looks like a Sui address → set it as the tracked addr
-    bot.on('text', async (ctx) => {
+    //   - Otherwise call next() so later handlers (bot.hears('rotate-yes'),
+    //     etc.) still get a shot — a bare `return` here would swallow the
+    //     update and silently break every command registered after this one.
+    bot.on('text', async (ctx, next) => {
         const text = ctx.message.text.trim();
 
         if (await isPendingImport(ctx.chat.id)) {
@@ -411,7 +414,7 @@ async function main() {
             return;
         }
 
-        if (!SUI_ADDR_RE.test(text)) return;
+        if (!SUI_ADDR_RE.test(text)) return next();
         await upsertSubscription(ctx.chat.id, text);
         await ctx.reply(
             `✅ Now tracking \`${text.slice(0, 10)}…${text.slice(-6)}\`.`,

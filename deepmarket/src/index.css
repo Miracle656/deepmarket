@@ -1382,6 +1382,26 @@ body {
   border-color: var(--border-strong);
 }
 
+/* ──────────────────────────────── INPUTS ──────────────────────────────── */
+.input {
+  background: var(--bg-base, #0a0f1a);
+  border: 1px solid var(--border-base);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: 0.85rem;
+  font-family: inherit;
+  padding: 9px 12px;
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.input::placeholder {
+  color: var(--text-muted);
+}
+.input:focus {
+  border-color: var(--yes, #1c6fff);
+  box-shadow: 0 0 0 3px rgba(28, 111, 255, 0.15);
+}
+
 /* ──────────────────────────────── ALERTS ──────────────────────────────── */
 .alert {
   display: block;
