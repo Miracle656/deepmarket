@@ -24,11 +24,11 @@ export const CONFIG = {
     STORE_PATH: process.env.STORE_PATH ?? './subs.json',
 
     // ── Bot trader ─────────────────────────────────────────────────
-    BOT_SUI_PRIVATE_KEY: process.env.BOT_SUI_PRIVATE_KEY ?? '',
-    BOT_STATE_PATH: process.env.BOT_STATE_PATH ?? './bot-state.json',
+    // Each Telegram chat owns its own custodial keypair (stored in subs.json
+    // via user-wallet.ts) — there is no global bot wallet. Strategy enabling
+    // is per-chat via the inline "▶️ Start strategy" button, not an env var.
     SUI_RPC_URL:
         process.env.SUI_RPC_URL ?? 'https://fullnode.testnet.sui.io:443',
-    STRATEGY_ENABLED: (process.env.STRATEGY_ENABLED ?? 'false') === 'true',
     STRATEGY_BUFFER_TICKS: Number(process.env.STRATEGY_BUFFER_TICKS ?? 3),
     STRATEGY_QTY_USD: Number(process.env.STRATEGY_QTY_USD ?? 0.5),
     STRATEGY_TICK_MS: Number(process.env.STRATEGY_TICK_MS ?? 60000),

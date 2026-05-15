@@ -749,38 +749,60 @@ async function main() {
     const stopWatchers = startWatchers(bot);
     const stopStrategy = startStrategyLoop(bot);
 
-    // Two run modes:
-    //   - WEBHOOK_DOMAIN set (hosted) → Telegraf via webhook, Telegram pushes
-    //     updates to /telegram-webhook on an Express server. /health is exposed
-    //     for UptimeRobot pings to defeat Render's 15-min idle spin-down.
-    //   - WEBHOOK_DOMAIN unset (local dev) → long-poll.
+    // Run modes (decided by env):
+    //
+    //   - PORT set (hosted, e.g. Render) → always bind an HTTP server on
+    //     PORT so Render's port-scan succeeds and the dyno doesn't get
+    //     killed for "no open ports". The bot itself runs in webhook mode
+    //     when WEBHOOK_DOMAIN is also set, or long-poll while you bootstrap
+    //     (e.g. before you know the Render URL to put into WEBHOOK_DOMAIN).
+    //
+    //   - PORT unset (local dev) → pure long-poll, no HTTP server.
     const webhookDomain = process.env.WEBHOOK_DOMAIN?.replace(/\/$/, '');
-    if (webhookDomain) {
-        const port = Number(process.env.PORT ?? 3002);
+    const port = process.env.PORT ? Number(process.env.PORT) : null;
+
+    if (port) {
         const app = express();
         app.use(express.json());
         app.get('/health', (_req, res) => {
             res.json({
                 service: 'deepmarket-bot',
                 status: 'ok',
-                mode: 'webhook',
+                mode: webhookDomain ? 'webhook' : 'long-poll',
             });
         });
         app.get('/', (_req, res) => {
             res.json({
                 service: 'deepmarket-bot',
                 status: 'ok',
-                webhook: `${webhookDomain}/telegram-webhook`,
+                webhook: webhookDomain
+                    ? `${webhookDomain}/telegram-webhook`
+                    : null,
             });
         });
-        app.use(bot.webhookCallback('/telegram-webhook'));
-        app.listen(port, () => {
-            console.log(`[bot] webhook server listening on :${port}`);
-        });
-        const hookUrl = `${webhookDomain}/telegram-webhook`;
-        await bot.telegram.setWebhook(hookUrl);
-        console.log(`[bot] webhook registered: ${hookUrl}`);
+
+        if (webhookDomain) {
+            app.use(bot.webhookCallback('/telegram-webhook'));
+            app.listen(port, () => {
+                console.log(`[bot] webhook server listening on :${port}`);
+            });
+            const hookUrl = `${webhookDomain}/telegram-webhook`;
+            await bot.telegram.setWebhook(hookUrl);
+            console.log(`[bot] webhook registered: ${hookUrl}`);
+        } else {
+            // Hosted but no domain configured yet — keep the HTTP server up
+            // (so Render's health check stays green) and fall back to long-poll
+            // for actual Telegram updates.
+            app.listen(port, () => {
+                console.log(
+                    `[bot] HTTP server listening on :${port} (long-poll mode — set WEBHOOK_DOMAIN to switch to webhook)`
+                );
+            });
+            await bot.launch();
+            console.log('[bot] launched via long-poll');
+        }
     } else {
+        // Local development — no Render, no HTTP server, just long-poll.
         await bot.launch();
         console.log(`[bot] launched via long-poll. polling every ${CONFIG.POLL_MS}ms`);
     }
