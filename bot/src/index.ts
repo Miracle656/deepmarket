@@ -4,6 +4,7 @@
 // happens via inline keyboard buttons attached to a single message that
 // gets edited in place on each tap.
 
+import express from 'express';
 import { Markup, Telegraf, type Context } from 'telegraf';
 import type { InlineKeyboardButton, InlineKeyboardMarkup } from 'telegraf/types';
 import { CONFIG } from './config.js';
@@ -747,8 +748,42 @@ async function main() {
 
     const stopWatchers = startWatchers(bot);
     const stopStrategy = startStrategyLoop(bot);
-    await bot.launch();
-    console.log(`[bot] launched. polling every ${CONFIG.POLL_MS}ms`);
+
+    // Two run modes:
+    //   - WEBHOOK_DOMAIN set (hosted) → Telegraf via webhook, Telegram pushes
+    //     updates to /telegram-webhook on an Express server. /health is exposed
+    //     for UptimeRobot pings to defeat Render's 15-min idle spin-down.
+    //   - WEBHOOK_DOMAIN unset (local dev) → long-poll.
+    const webhookDomain = process.env.WEBHOOK_DOMAIN?.replace(/\/$/, '');
+    if (webhookDomain) {
+        const port = Number(process.env.PORT ?? 3002);
+        const app = express();
+        app.use(express.json());
+        app.get('/health', (_req, res) => {
+            res.json({
+                service: 'deepmarket-bot',
+                status: 'ok',
+                mode: 'webhook',
+            });
+        });
+        app.get('/', (_req, res) => {
+            res.json({
+                service: 'deepmarket-bot',
+                status: 'ok',
+                webhook: `${webhookDomain}/telegram-webhook`,
+            });
+        });
+        app.use(bot.webhookCallback('/telegram-webhook'));
+        app.listen(port, () => {
+            console.log(`[bot] webhook server listening on :${port}`);
+        });
+        const hookUrl = `${webhookDomain}/telegram-webhook`;
+        await bot.telegram.setWebhook(hookUrl);
+        console.log(`[bot] webhook registered: ${hookUrl}`);
+    } else {
+        await bot.launch();
+        console.log(`[bot] launched via long-poll. polling every ${CONFIG.POLL_MS}ms`);
+    }
 
     const shutdown = () => {
         stopWatchers();

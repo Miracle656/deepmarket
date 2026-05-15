@@ -1,0 +1,10 @@
+node_modules
+dist
+.env
+.env.*
+*.log
+subs.json
+bot-state.json
+agent-memory.json
+.dockerignore
+Dockerfile
