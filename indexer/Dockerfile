@@ -6,11 +6,12 @@
 # speeds subsequent ones up considerably.
 
 # ──────────────────────────── Builder ─────────────────────────────────
-# Rust 1.85+ is required: sui-sdk at testnet-v1.67.2 declares edition = "2024"
-# in its Cargo.toml, and edition 2024 was only stabilized in 1.85. With an
-# older Rust the manifest parse fails and Cargo reports an opaque "no matching
-# package named `sui-sdk` found" rather than an edition error.
-FROM rust:1.86-slim-bookworm AS builder
+# Minimum Rust: 1.88. Two reasons stack:
+#   1. sui-sdk at testnet-v1.67.2 declares edition = "2024" (stabilized in 1.85)
+#   2. The lockfile pins recent transitive deps (home 0.5.12, time 0.3.47,
+#      time-core 0.1.8) that hard-require rustc 1.88
+# Picking 1.90 to give headroom against future patch-version transitive bumps.
+FROM rust:1.90-slim-bookworm AS builder
 
 WORKDIR /app
 
