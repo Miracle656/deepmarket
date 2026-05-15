@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Routes, Route, Navigate, NavLink, useNavigate } from 'react-router-dom';
 import { ConnectButton, useCurrentAccount } from '@mysten/dapp-kit';
-import { Sun, Moon, BarChart3, TrendingUp, Info, Wallet } from 'lucide-react';
+import { Menu, X, BarChart3, TrendingUp, Info, Wallet } from 'lucide-react';
 import { CONFIG, type Market } from './lib/config';
 import { ToastProvider } from './lib/toast';
 import { useMarkets } from './lib/useMarkets';
@@ -13,7 +13,8 @@ import PortfolioPage from './components/PortfolioPage';
 import PredictPage from './components/PredictPage';
 import PredictDetailPage from './components/PredictDetailPage';
 import AgentAuthorizePage from './components/AgentAuthorizePage';
-import { rippleThemeToggle } from './lib/themeToggle';
+// rippleThemeToggle import removed — light mode is disabled in production.
+// Re-add when the toggle button is uncommented in the nav.
 
 type Filter = 'All' | 'Active' | 'Resolved';
 
@@ -38,17 +39,16 @@ function AppInner() {
   const [filter, setFilter] = useState<Filter>('All');
   const [showCreate, setShowCreate] = useState(false);
   const [resolveTarget, setResolveTarget] = useState<Market | null>(null);
-  const [theme, setTheme] = useState<'dark' | 'light'>(
-    () => (localStorage.getItem('dm-theme') as 'dark' | 'light') ?? 'dark'
-  );
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  // Light mode is disabled in production — theme is hard-pinned to 'dark'.
+  // We keep this as state so the prop signature for child components
+  // (MarketDetailPage, PredictDetailPage) is unchanged, but no setter is
+  // exposed.
+  const [theme] = useState<'dark' | 'light'>('dark');
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
-    localStorage.setItem('dm-theme', theme);
   }, [theme]);
-
-  const toggleTheme = (e: React.MouseEvent<HTMLButtonElement>) =>
-    rippleThemeToggle(e, theme, setTheme);
 
   const filtered = markets.filter(m => {
     if (filter === 'Active') return m.status === 'Active';
@@ -91,6 +91,10 @@ function AppInner() {
         </div>
 
         <div className="nav-right">
+          {/*
+            Light-mode toggle is hidden for now — the app is dark-mode-only
+            in production. toggleTheme + theme state remain in case we
+            re-enable later.
           <button
             onClick={toggleTheme}
             className="filter-btn"
@@ -99,13 +103,61 @@ function AppInner() {
           >
             {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
           </button>
+          */}
           <div className="chain-badge">
             <div className="chain-dot" />
             Testnet
           </div>
           <ConnectButton />
+          <button
+            className="nav-hamburger"
+            aria-label="Open menu"
+            onClick={() => setMobileMenuOpen(true)}
+          >
+            <Menu size={20} />
+          </button>
         </div>
       </nav>
+
+      {/* ─── Mobile drawer ─── */}
+      {mobileMenuOpen && (
+        <div
+          className="mobile-drawer-overlay"
+          onClick={() => setMobileMenuOpen(false)}
+        >
+          <aside
+            className="mobile-drawer-panel"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mobile-drawer-header">
+              <span style={{ fontWeight: 800, letterSpacing: '-0.02em' }}>
+                DeepMarket
+              </span>
+              <button
+                className="mobile-drawer-close"
+                aria-label="Close menu"
+                onClick={() => setMobileMenuOpen(false)}
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <nav className="mobile-drawer-nav">
+              {(['markets', 'predict', 'portfolio', 'agent', 'about'] as const).map((t) => (
+                <NavLink
+                  key={t}
+                  to={`/${t}`}
+                  className={({ isActive }) =>
+                    `mobile-drawer-link ${isActive ? 'active' : ''}`
+                  }
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  {t.charAt(0).toUpperCase() + t.slice(1)}
+                </NavLink>
+              ))}
+            </nav>
+          </aside>
+        </div>
+      )}
 
       {/* ─── Ticker bar ─── */}
       <div className="ticker-bar">
