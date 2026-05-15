@@ -82,6 +82,7 @@ The hosted Render services the deployed frontend talks to:
 |---|---|---|
 | **Indexer** | `https://deepmarket-tusz.onrender.com` | Tracks `market_factory` events, persists fills + price history, serves `/markets`, `/markets/:id/history`, `/markets/:id/positions/:address`. |
 | **Messaging relayer** | `https://sui-stack-messaging.onrender.com` | Sui Stack Messaging relayer — gRPC sub to Sui, encrypted message routing, `/health_check`. Built from a fork of MystenLabs/sui-stack-messaging. |
+| **Telegram bot** | `https://deepmarketbot.onrender.com` | The notifier + autonomous trader + LLM agent. Telegram itself talks to the bot (via long-poll or webhook); the URL is mostly for `/health` pings and to make the service host-able. |
 
 Both are on Render's free tier and pinged every 5 minutes by UptimeRobot to
 defeat the 15-minute idle spin-down. First request after a long silence may
