@@ -74,6 +74,20 @@ don't own these.
 
 `Oracle` and `PredictManager` ids are user-specific and discovered at runtime.
 
+## Deployed backend services
+
+The hosted Render services the deployed frontend talks to:
+
+| Service | URL | What it does |
+|---|---|---|
+| **Indexer** | `https://deepmarket-tusz.onrender.com` | Tracks `market_factory` events, persists fills + price history, serves `/markets`, `/markets/:id/history`, `/markets/:id/positions/:address`. |
+| **Messaging relayer** | `https://sui-stack-messaging.onrender.com` | Sui Stack Messaging relayer — gRPC sub to Sui, encrypted message routing, `/health_check`. Built from a fork of MystenLabs/sui-stack-messaging. |
+
+Both are on Render's free tier and pinged every 5 minutes by UptimeRobot to
+defeat the 15-minute idle spin-down. First request after a long silence may
+still take 30-60s to respond if the ping happens to land between sleep and
+the next ping.
+
 ## Quote assets
 
 | Backend | Quote |
@@ -94,7 +108,11 @@ VITE_DEEPBOOK_PACKAGE_ID=0x22be4cade64bf2d02412c7e8d0e8beea2f78828b948118d467353
 VITE_DEEPBOOK_REGISTRY_ID=0x7c256edbda983a2cd6f946655f4bf3f00a41043993781f8674a7046e8c0e11d1
 VITE_DEEP_TOKEN_TYPE=0x36dbef866a1d62bf7328989a10fb2f07d769f4ee587c0de4a0a256e57e0a58a8::deep::DEEP
 VITE_NETWORK=testnet
-VITE_RELAYER_URL=http://localhost:3001
+
+# Backend services — point at hosted Render instances for production, or
+# localhost for local dev (defaults to localhost in code).
+VITE_INDEXER_URL=https://deepmarket-tusz.onrender.com
+VITE_RELAYER_URL=https://sui-stack-messaging.onrender.com
 ```
 
 ## Bot `.env` keys

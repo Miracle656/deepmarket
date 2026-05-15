@@ -137,6 +137,21 @@ sui client upgrade --upgrade-capability <CAP_ID> --gas-budget 500000000
   package id, or you'll get `PackageIDDoesNotMatch`.
 </Callout>
 
+## Production backends (hosted)
+
+If you'd rather skip running the indexer + relayer yourself, point the
+frontend at the hosted Render services in your `.env`:
+
+```env
+VITE_INDEXER_URL=https://deepmarket-tusz.onrender.com
+VITE_RELAYER_URL=https://sui-stack-messaging.onrender.com
+```
+
+These are the same services the live Vercel deploy uses. They're on
+Render's free tier — pinged by UptimeRobot every 5 minutes to defeat the
+15-minute idle spin-down, but the very first request after a long
+silence may still take 30-60 seconds to wake up.
+
 ## Next steps
 
 - [Architecture](/architecture) — how the pieces fit together
