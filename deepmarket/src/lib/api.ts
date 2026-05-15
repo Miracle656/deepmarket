@@ -1,4 +1,10 @@
-const API_URL = 'http://localhost:3000';
+// Indexer base URL — set VITE_INDEXER_URL in .env for deploys.
+// Exported so other modules don't have to duplicate the fallback logic.
+export const INDEXER_URL =
+    (import.meta.env.VITE_INDEXER_URL as string | undefined) ??
+    'http://localhost:3000';
+
+const API_URL = INDEXER_URL;
 
 export interface CompileResult {
     modules: string[];

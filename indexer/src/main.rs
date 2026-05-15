@@ -32,8 +32,15 @@ async fn main() -> Result<()> {
     });
 
     let app = api::build_router(db_store, sui_rpc_url).await;
-    let listener = tokio::net::TcpListener::bind("[::]:3000").await?;
-    println!("API server listening on 0.0.0.0:3000");
+
+    // Honor Render's injected PORT (defaults to 3000 for local docker-compose).
+    let port: u16 = std::env::var("PORT")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(3000);
+    let bind = format!("0.0.0.0:{}", port);
+    let listener = tokio::net::TcpListener::bind(&bind).await?;
+    println!("API server listening on {}", bind);
 
     axum::serve(listener, app).await?;
 

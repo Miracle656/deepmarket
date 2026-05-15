@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import type { Market } from '../lib/config';
 import { CONFIG } from '../lib/config';
+import { INDEXER_URL } from '../lib/api';
 import { formatVol } from '../App';
 import {
     getCachedManagerId,
@@ -72,7 +73,7 @@ export default function PortfolioPage({ markets }: Props) {
             markets.map(async (m) => {
                 try {
                     const res = await fetch(
-                        `http://localhost:3000/markets/${m.id}/positions/${acct.address}`
+                        `${INDEXER_URL}/markets/${m.id}/positions/${acct.address}`
                     );
                     const data = await res.json();
                     return {

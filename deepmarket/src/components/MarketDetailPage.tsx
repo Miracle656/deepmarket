@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { ArrowLeft, LineChart, MessageCircle } from 'lucide-react';
 import type { Market } from '../lib/config';
+import { INDEXER_URL } from '../lib/api';
 import TvChart from './TvChart';
 import TradeSidebar from './TradeSidebar';
 import MintTokensModal from './MintTokensModal';
@@ -34,7 +35,7 @@ export default function MarketDetailPage({ markets, theme, onResolve }: Props) {
 
     useEffect(() => {
         if (!market) return;
-        fetch(`http://localhost:3000/markets/${market.id}/history`)
+        fetch(`${INDEXER_URL}/markets/${market.id}/history`)
             .then(r => r.json())
             .then(data => {
                 const history: any[] = data.history ?? [];
