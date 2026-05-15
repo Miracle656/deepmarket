@@ -51,6 +51,12 @@ pub async fn build_router(db: DbStore, sui_rpc_url: String) -> Router {
         .allow_headers(Any);
 
     Router::new()
+        // Root + /health double as UptimeRobot-pingable endpoints. UR considers
+        // 2xx healthy and 4xx unhealthy, so without these a UR monitor pointed
+        // at the root URL would conclude the service is down and stop keeping
+        // the dyno warm against Render's 15-min idle spin-down.
+        .route("/", get(root))
+        .route("/health", get(root))
         .route("/markets", get(get_markets))
         .route("/markets/:id/orderbook", get(get_orderbook))
         .route("/markets/:id/positions/:address", get(get_positions))
@@ -58,6 +64,20 @@ pub async fn build_router(db: DbStore, sui_rpc_url: String) -> Router {
         .route("/api/compile-market", post(compile_market))
         .with_state(shared_state)
         .layer(cors)
+}
+
+async fn root() -> Json<serde_json::Value> {
+    Json(json!({
+        "service": "deepmarket-indexer",
+        "status": "ok",
+        "endpoints": [
+            "GET  /markets",
+            "GET  /markets/:id/orderbook",
+            "GET  /markets/:id/positions/:address",
+            "GET  /markets/:id/history",
+            "POST /api/compile-market"
+        ]
+    }))
 }
 
 async fn compile_market(Json(payload): Json<CompileRequest>) -> Json<serde_json::Value> {
