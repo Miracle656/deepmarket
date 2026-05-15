@@ -10,25 +10,37 @@ function required(name: string): string {
     return v;
 }
 
+/**
+ * Env var with default — treats empty string AND whitespace-only AS missing.
+ * Plain `??` only catches null/undefined, so Render env vars typo'd as
+ * `SUI_RPC_URL=` (empty value) would pass through as "" and fail fetch URL
+ * parsing downstream. This guards against that class of failure.
+ */
+function envOr(name: string, fallback: string): string {
+    const v = process.env[name]?.trim();
+    return v && v.length > 0 ? v : fallback;
+}
+
 export const CONFIG = {
     BOT_TOKEN: required('BOT_TOKEN'),
-    INDEXER_URL: process.env.INDEXER_URL ?? 'http://localhost:3000',
-    PREDICT_SERVER_URL:
-        process.env.PREDICT_SERVER_URL ??
-        'https://predict-server.testnet.mystenlabs.com',
-    PREDICT_OBJECT_ID:
-        process.env.PREDICT_OBJECT_ID ??
-        '0xc8736204d12f0a7277c86388a68bf8a194b0a14c5538ad13f22cbd8e2a38028a',
-    WEB_URL: process.env.WEB_URL ?? 'http://localhost:5174',
+    INDEXER_URL: envOr('INDEXER_URL', 'http://localhost:3000'),
+    PREDICT_SERVER_URL: envOr(
+        'PREDICT_SERVER_URL',
+        'https://predict-server.testnet.mystenlabs.com'
+    ),
+    PREDICT_OBJECT_ID: envOr(
+        'PREDICT_OBJECT_ID',
+        '0xc8736204d12f0a7277c86388a68bf8a194b0a14c5538ad13f22cbd8e2a38028a'
+    ),
+    WEB_URL: envOr('WEB_URL', 'http://localhost:5174'),
     POLL_MS: Number(process.env.POLL_MS ?? 30000),
-    STORE_PATH: process.env.STORE_PATH ?? './subs.json',
+    STORE_PATH: envOr('STORE_PATH', './subs.json'),
 
     // ── Bot trader ─────────────────────────────────────────────────
     // Each Telegram chat owns its own custodial keypair (stored in subs.json
     // via user-wallet.ts) — there is no global bot wallet. Strategy enabling
     // is per-chat via the inline "▶️ Start strategy" button, not an env var.
-    SUI_RPC_URL:
-        process.env.SUI_RPC_URL ?? 'https://fullnode.testnet.sui.io:443',
+    SUI_RPC_URL: envOr('SUI_RPC_URL', 'https://fullnode.testnet.sui.io:443'),
     STRATEGY_BUFFER_TICKS: Number(process.env.STRATEGY_BUFFER_TICKS ?? 3),
     STRATEGY_QTY_USD: Number(process.env.STRATEGY_QTY_USD ?? 0.5),
     STRATEGY_TICK_MS: Number(process.env.STRATEGY_TICK_MS ?? 60000),
