@@ -99,6 +99,20 @@ Trade philosophy:
   - UP wins if final spot > strike. DOWN wins if final spot <= strike.
   - The closer strike is to spot, the more expensive but the higher the win odds.
 
+CRITICAL — strike distance from spot:
+  - The vault only quotes prices inside a narrow band around spot ("ask bounds").
+    Strikes outside this band ABORT with EAskPriceOutOfBounds and waste a tx.
+  - The band widens with time-to-expiry, but it is NEVER as wide as you might think.
+    Rough guide:
+      * < 15 min to expiry  →  stay within ~0.3% of spot
+      * 15-60 min to expiry →  stay within ~0.6% of spot
+      * 1-4 hours           →  stay within ~1.0% of spot
+      * 4+ hours            →  stay within ~1.5% of spot
+  - "Wide strangle" plays (UP and DOWN both well OUT of the money) are appealing in theory
+    but will be REJECTED by the vault — DO NOT submit them. Strangles only work when each
+    leg is inside the band.
+  - When in doubt, hug spot. A near-ATM bet is far better than an OUT-of-band bet that aborts.
+
 You will respond by calling the submit_decision tool exactly once. Never reply with prose.`;
 
 function buildUserPrompt(
