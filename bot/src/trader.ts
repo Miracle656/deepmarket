@@ -6,6 +6,7 @@ import { Transaction, coinWithBalance } from '@mysten/sui/transactions';
 import type { SuiObjectChange } from '@mysten/sui/jsonRpc';
 import { CONFIG } from './config.js';
 import { getSuiClient } from './sui.js';
+import { findManagerByOwner } from './predict.js';
 import {
     getSubscription,
     patchSubscription,
@@ -164,6 +165,28 @@ export async function getOrCreateUserManager(chatId: number): Promise<string> {
     if (sub.botManagerId) return sub.botManagerId;
     const kp = await getUserKeypair(chatId);
     if (!kp) throw new Error('No custodial wallet for this chat');
+
+    // Before minting a new manager, check whether this wallet already owns
+    // one from a prior session (e.g. a recovered/imported wallet that had
+    // a manager before the bot's local state was rebuilt). Predict allows
+    // multiple managers per address, but if we skipped this check we'd
+    // create a duplicate empty manager and silently leave the user's
+    // existing funds/positions stranded.
+    const owner = kp.getPublicKey().toSuiAddress();
+    try {
+        const existing = await findManagerByOwner(owner);
+        if (existing) {
+            await patchSubscription(chatId, { botManagerId: existing });
+            await appendTrade(chatId, {
+                ts: Date.now(),
+                type: 'init-manager',
+                digest: 'discovered-existing',
+            });
+            return existing;
+        }
+    } catch {
+        // Predict server transient — fall through and create a fresh one.
+    }
 
     const sui = getSuiClient();
     const tx = buildCreateManagerTx();
