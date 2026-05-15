@@ -1,101 +1,80 @@
+---
+title: Roadmap
+description: What's shipped, what's next, and where DeepMarket is heading.
+---
+
 import { Callout } from 'nextra/components'
 
 # Roadmap
 
-DeepMarket is built around the **Sui Overflow 2026** hackathon plan
-(deadline **2026-06-21**), but the architecture is meant to ship past it.
-This page tracks what's done, what's next, and what's parked.
+DeepMarket is built to ship and keep shipping. This page tracks what's
+verified live, what's actively in progress, and what's parked for later.
 
-## Hackathon plan (6 weeks)
+## Shipped & verified live
 
-| Week | Theme | Status |
-|---|---|---|
-| 1 | Chat layer (Sui Stack Messaging + Walrus + Seal) | ✅ Done |
-| 2 | DeepBook Predict integration (mint / redeem / withdraw / range / chart) | ✅ Done |
-| 3 | Telegram bot + notifier-mode agent + MemWal memory | ✅ Done |
-| 4 | Move policy object (AgentCap, capped budget, on-chain log, owner revocation) | ✅ Done — **verified live on testnet** |
-| 5 | Nautilus TEE attestation (verifiable LLM decisions) | 🟡 In progress |
-| 6 | Polish, DeFi & Payments framing, demo video, mainnet deploy, submission | 🟡 Upcoming |
+These are running on Sui testnet today and have been exercised end-to-end:
 
-## Track coverage
+- **Spot YES/NO markets** — create / mint / trade / resolve / redeem
+- **DeepBook Predict full lifecycle** — manager init → deposit → mint →
+  redeem → withdraw
+- **Per-market encrypted chat** — Sui Stack Messaging + Walrus + Seal,
+  with one-popup auto-sign and an invite chain
+- **Telegram trader bot** — per-user custodial wallets, autonomous
+  60-second strategy loop, auto-redeem on settlement
+- **LLM agent** — Claude decisions (Opus 4.7), batched 1-3 mints per tick,
+  win-rate-aware sizing circuit breaker, structured tool-use output
+- **MemWal semantic memory** — every settled trade written as a Walrus
+  blob, vector-recalled into the prompt at decision time
+- **AgentCap** — on-chain Move policy object + audit log; create, discover,
+  record_decision, and event-stream-rendered decision log all verified
 
-DeepMarket targets all four Sui Overflow 2026 prize tracks. Status of each:
+## Active work
 
-- **Walrus** — ✅ per-market chat (Walrus + Seal) + MemWal-backed agent memory
-- **Agentic Web** — ✅ LLM agent + Move policy object + capped budget + on-chain audit log + owner revocation. TEE attestation pending.
-- **DeepBook** — ✅ Predict integration alongside V3 spot markets — chat-based + Telegram-driven Predict frontend
-- **DeFi & Payments** — ✅ DeepMarket itself as a novel prediction-market protocol; agent's autonomous redemption as the programmable-money angle
+1. **AgentCap revoke flow end-to-end test** — code path exists, awaits a
+   click-through to confirm on-chain. Quick.
+2. **TEE attestation** — wrap the Claude decision call in a Trusted
+   Execution Environment so the model + prompt are independently
+   verifiable. Forking `nautical` as the base.
+3. **Mainnet readiness pass** — Spot contracts + AgentCap are ready to
+   redeploy; Predict integration follows Mysten's mainnet launch.
 
-## What's verified live
+## Near-term polish
 
-- Spot market creation + mint + redeem on testnet
-- Predict full lifecycle: manager init → deposit → mint → redeem → withdraw
-- Per-market chat with two wallets, end-to-end, auto-sign + invite chain
-- Telegram bot trading with 9 wins / 1 hour at 95% win rate (rule-based)
-- LLM agent: Claude decisions, batched mints, MemWal recall, win-rate cooldown
-- AgentCap end-to-end: create → discover → record → on-chain audit log
+- **Tokenized share token on `PredictManager`** — wrap manager positions
+  in a transferable share. Unlocks composability with margin, lending,
+  vault aggregators, and structured products.
+- **Range positions panel** — UI list, gated on the Predict server
+  exposing `/managers/:id/range-positions/summary` (currently 404).
+- **Multi-oracle agent context** — the agent currently sees one oracle
+  per tick; show it all active oracles so it can pick the best setup.
+- **Auto-deposit only the gap** — the bot currently deposits full
+  `quantity` per mint, wasting a few cents in dUSDC churn.
+- **Down-direction strategy mode** — the rule-based fallback always mints
+  UP. The LLM agent already picks both directions.
 
-## What's pending
+## Larger initiatives
 
-### Short-term (hackathon-critical)
+- **Vol-arb signal feed** — back-solve Predict's implied vol from
+  `OracleSVI`, compare against external option venues (Deribit / Polymarket
+  smile), surface mispricings as agent input. Start signal-only, then
+  optionally execute the Predict leg.
+- **Surface Studio** — live 3D BTC vol surface (strike × expiry → IV)
+  streamed from `OracleSVIUpdated` events, with arbitrage-free checks for
+  butterfly / calendar violations.
+- **PLP risk dashboard** — vault utilization, withdrawal-limiter token-
+  bucket state, per-oracle exposure, ±5σ what-if PnL simulator.
+- **zkLogin in the chat relayer** — Slush / Google sign-in is currently
+  rejected by the upstream relayer (`Unknown signature scheme flag: 0x05`).
+- **Mobile-first PWA** — install-to-home, push notifications via the
+  Telegram bot's existing alert pipeline.
 
-1. **AgentCap revoke test** — code path exists, awaiting one click-through to
-   verify on-chain
-2. **Vercel `VITE_PACKAGE_ID`** — bump the dashboard env var to v3 so the
-   deployed `/agent` page works
-3. **Nautilus TEE attestation** — wrap the Claude call in a TEE so the model
-   + prompt are verifiable. Forking `nautical`.
-4. **Demo video** — ≤5 min, YouTube preferred, the canonical artifact
-5. **Pitch deck refresh** — update slides to reflect AgentCap + MemWal live
+## Mainnet readiness
 
-### Medium-term (post-hackathon)
-
-- **Tokenized share token on `PredictManager`** — composable position object,
-  unlocks vault strategies + structured products
-- **zkLogin support in the chat relayer** — Slush/Google sign-in is currently
-  rejected by the upstream relayer (`Unknown signature scheme flag: 0x05`)
-- **Range-position panel** — waiting on
-  `predict-server/.../range-positions/summary` endpoint
-- **Surface Studio** — 3-D vol surface viewer (strike × expiry → IV) from
-  `OracleSVIUpdated` events
-- **Vol-arb bot** — read Polymarket / Deribit smiles, signal Predict
-  mispricings; signal-first, execute-on-Predict-only
-
-### Long-term / parked
-
-- Auto-deposit only the gap (not full quantity each mint) — bot optimization
-- Manual chat refresh button (clears `SYNC_PENDING`)
-- Strategy for surfacing relayer subscription health
-- Indexer URL `VITE_INDEXER_URL` env var parameterization for hosted frontend
-- DEEP token accumulation for V3 pool creation on demo markets
-- Down-direction strategy mode for the rule-based bot (currently always UP)
-- PLP risk dashboard — LP-side analytics for Predict's vault
-
-## Mainnet
-
-| Component | Mainnet readiness |
+| Component | Status |
 |---|---|
-| DeepMarket spot contracts | ✅ Ready — same code, deploy on day one |
-| Chat (Sui Stack Messaging) | ✅ Already on mainnet |
-| Telegram bot | ✅ Code-portable; just swap RPC + package ids |
-| AgentCap | ✅ Ready — re-publish the package |
-| **DeepBook Predict** | ⏳ Mainnet launch is on Mysten's roadmap; we follow |
-| MemWal | ✅ Mainnet endpoint exists |
-
-## Submission requirements (Sui Overflow 2026)
-
-- Public GitHub repo ✅
-- Demo video (≤5 min) 🟡
-- Project logo ✅ (`deepmarket.png`)
-- Testnet deployment + package id ✅
-- Website (recommended) ✅ (Vercel deploy)
-
-## Judging weights
-
-- **Real-World Application** — 50%
-- **Product & UX** — 20%
-- **Technical Implementation** — 20%
-- **Presentation & Vision** — 10%
-
-The chat-augmented + agent narrative is the real-world story; that's what
-the demo video has to land.
+| Spot YES/NO contracts | Ready — same code, deploy on day one |
+| Encrypted chat | Sui Stack Messaging is already on mainnet |
+| Telegram bot | Code-portable; swap RPC + package ids |
+| AgentCap | Ready — re-publish the package |
+| DeepBook Predict | Awaits Mysten's mainnet launch |
+| MemWal | Mainnet endpoint exists |

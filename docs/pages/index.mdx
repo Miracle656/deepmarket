@@ -1,22 +1,22 @@
+---
+title: Introduction
+description: DeepMarket — social, agent-augmented prediction trading on Sui.
+---
+
 import { Callout, Cards } from 'nextra/components'
 
-<div className="dm-hero">
-  <span className="dm-hero-eyebrow">Live on Sui Testnet</span>
-  <h1 className="dm-hero-title">
-    Social, agent-augmented{' '}
-    <span>prediction trading.</span>
-  </h1>
-  <p className="dm-hero-sub">
-    One frontend over two prediction-market backends, wrapped in a social layer
-    and driven — optionally — by an autonomous AI agent. Every market has an
-    encrypted chat room. An LLM agent can trade on your behalf within on-chain
-    spending limits you control.
-  </p>
-</div>
+# DeepMarket
+
+**Social, agent-augmented prediction trading on Sui.**
+
+One frontend over two prediction-market backends, wrapped in a social layer
+and driven — optionally — by an autonomous AI agent. Every market has an
+end-to-end-encrypted chat room. An LLM agent can trade on your behalf within
+on-chain spending limits you control and can revoke at any time.
 
 <Callout type="info">
-  Live on **Sui testnet** today. Built for **Sui Overflow 2026**, targeting all
-  four prize tracks: Walrus, Agentic Web, DeepBook, and DeFi & Payments.
+  Live on **Sui testnet**.{' '}
+  [Open the app ↗](https://deepmarket-psi.vercel.app)
 </Callout>
 
 ## What's in the box
@@ -54,7 +54,7 @@ same Telegram bot and AI agent.
   enables zero-popup auto-signing.
 - **Telegram bot** — per-user custodial wallets, inline-keyboard trading,
   settlement DMs, and an autonomous strategy loop.
-- **LLM agent** — Claude decides direction, strike, and size each tick, with a
+- **LLM agent** — Claude decides direction, strike, and size each tick with a
   written rationale and a semantic memory of past trades stored on Walrus.
 - **AgentCap** — an on-chain policy object: you authorize the agent with a
   daily spend cap and expiry, every decision is logged on-chain, and you can

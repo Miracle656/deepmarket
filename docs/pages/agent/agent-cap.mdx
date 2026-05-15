@@ -20,8 +20,10 @@ Source: `deepmarket_contract/sources/agent_cap.move`.
 | **On-chain audit log** | Every agent action emits an `AgentDecisionMade` event with strike, direction, cover, and a sha256 of the rationale |
 | **Owner revocation** | The owner can flip `revoked = true` in one tx; the next agent action aborts |
 
-This is the Agentic Web track's "Autonomous Agent Wallet" checklist —
-DeepMarket implements all four bullets.
+These four properties together are what makes the bot **non-custodial-ish**:
+the bot's wallet still signs the mints, but the *authorization* for those
+mints is a Move object the user owns. Revoking yanks the authorization at
+the contract level, not just in some off-chain config.
 
 ## The objects + functions
 
