@@ -75,15 +75,31 @@ const SUI_ADDR_RE = /^0x[a-fA-F0-9]{64}$/;
 // Helpers
 // ────────────────────────────────────────────────────────────────────────────
 
+/**
+ * The address all menu lookups should use: prefer the custodial bot wallet
+ * (where actual trading happens) over the `/start <addr>` tracking address.
+ * Trader-only users have suiAddr = 0x0…0 placeholder; without this helper
+ * the menu would render those zeros and lookups would all 404.
+ */
+function effectiveAddr(sub: {
+    botWalletAddr?: string;
+    suiAddr: string;
+}): string {
+    return sub.botWalletAddr && sub.botWalletAddr.length > 0
+        ? sub.botWalletAddr
+        : sub.suiAddr;
+}
+
 async function loadMenuState(chatId: number): Promise<MenuState> {
     const sub = await getSubscription(chatId);
     if (!sub) return { muted: false };
+    const addr = effectiveAddr(sub);
     const state: MenuState = {
-        addr: sub.suiAddr,
+        addr,
         muted: sub.muted,
     };
     try {
-        const managerId = await findManagerByOwner(sub.suiAddr);
+        const managerId = await findManagerByOwner(addr);
         if (managerId) {
             const summary = await getManagerSummary(managerId);
             if (summary) {
@@ -100,7 +116,7 @@ async function loadMenuState(chatId: number): Promise<MenuState> {
         const markets = await listMarkets();
         let count = 0;
         for (const m of markets) {
-            const p = await getMarketPosition(m.id, sub.suiAddr);
+            const p = await getMarketPosition(m.id, addr);
             const { yes, no } = decodeBalance(p);
             if (yes > 0.0001 || no > 0.0001) count++;
         }
@@ -158,8 +174,9 @@ async function buildPositionsView(chatId: number): Promise<{
             extra: { reply_markup: { inline_keyboard: [backButton('menu:main')] } },
         };
     }
+    const addr = effectiveAddr(sub);
     const lines: string[] = [
-        `*Positions for* \`${sub.suiAddr.slice(0, 10)}…${sub.suiAddr.slice(-6)}\``,
+        `*Positions for* \`${addr.slice(0, 10)}…${addr.slice(-6)}\``,
         '',
     ];
 
@@ -168,7 +185,7 @@ async function buildPositionsView(chatId: number): Promise<{
         const markets = await listMarkets();
         const held: { m: SpotMarket; yes: number; no: number }[] = [];
         for (const m of markets) {
-            const p = await getMarketPosition(m.id, sub.suiAddr);
+            const p = await getMarketPosition(m.id, addr);
             const { yes, no } = decodeBalance(p);
             if (yes > 0.0001 || no > 0.0001) held.push({ m, yes, no });
         }
@@ -189,7 +206,7 @@ async function buildPositionsView(chatId: number): Promise<{
 
     // Predict
     try {
-        const managerId = await findManagerByOwner(sub.suiAddr);
+        const managerId = await findManagerByOwner(addr);
         if (!managerId) {
             lines.push('*PREDICT* _(no manager yet)_');
         } else {
@@ -313,7 +330,7 @@ async function buildPredictMineView(chatId: number): Promise<{
             },
         };
     }
-    const mid = await findManagerByOwner(sub.suiAddr);
+    const mid = await findManagerByOwner(effectiveAddr(sub));
     if (!mid) {
         return {
             text: '*Predict positions*\n_No manager yet. Mint your first position in the app._',
