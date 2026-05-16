@@ -261,36 +261,19 @@ async function chooseMintBatch(
         }
     }
 
-    // Rule-based fallback (agent disabled) — pick the quotable UP strike
-    // nearest spot. Sourced from the verified ladder so it can never abort.
-    const spotUsd = state.latest_price ? spotToUsd(state.latest_price.spot) : NaN;
-    if (!isFinite(spotUsd)) return null;
-    const upQuotes = quotes
-        .filter((q) => q.direction === 'UP')
-        .sort(
-            (a, b) =>
-                Math.abs(a.strikeUsd - spotUsd) - Math.abs(b.strikeUsd - spotUsd)
-        );
-    const pick = upQuotes[0];
-    if (!pick) return null;
-    const dup = openPositions.find(
-        (p) =>
-            p.oracle_id === oracle.oracle_id &&
-            BigInt(p.strike) === pick.strikeRaw &&
-            p.is_up === true
+    // No LLM agent configured → DO NOT TRADE.
+    //
+    // The old rule fallback minted "UP near spot" every tick. With real
+    // quotes we can now see why that bleeds: the nearest-spot strike prices
+    // at ~100% implied (cost ≈ payout) — you pay ~$1 to win ~$0. A rule
+    // with no probability model has no edge on ANY strike, so the only
+    // correct move is to pass. Trading resumes automatically once
+    // ANTHROPIC_API_KEY is set and isAgentAvailable() is true.
+    console.warn(
+        `[strategy] no LLM agent configured (ANTHROPIC_API_KEY missing) — ` +
+            `passing for chat ${chatId}. Set the key on the bot service to enable trading.`
     );
-    if (dup) return null;
-    return {
-        mints: [
-            {
-                direction: 'UP',
-                strike: pick.strikeRaw,
-                coverUsd: CONFIG.STRATEGY_QTY_USD,
-                rationale: `rule: nearest quotable UP strike (implied ${(pick.impliedProb * 100).toFixed(0)}%)`,
-            },
-        ],
-        summaryRationale: `rule loop · UP @ $${pick.strikeUsd.toFixed(0)} (no LLM agent configured)`,
-    };
+    return null;
 }
 
 function clamp(v: number, lo: number, hi: number): number {
