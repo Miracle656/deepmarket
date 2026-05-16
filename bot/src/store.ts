@@ -52,6 +52,15 @@ export interface Subscription {
      * as a private key for import (instead of a Sui address).
      */
     pendingImport?: boolean;
+    /**
+     * On-chain AgentCap object id authorizing the bot wallet to trade.
+     * Auto-discovered from AgentCapCreated events keyed by the bot wallet
+     * address. When set + not revoked, the strategy loop records every
+     * decision on-chain via agent_cap::record_decision.
+     */
+    agentCapId?: string;
+    /** Cached "this cap is revoked" flag so we stop trading without re-querying every tick. */
+    agentCapRevoked?: boolean;
 }
 
 interface Db {

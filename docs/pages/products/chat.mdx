@@ -1,0 +1,128 @@
+import { Callout, Steps } from 'nextra/components'
+
+# Encrypted Market Chat
+
+Every market on DeepMarket has an **end-to-end-encrypted chat room**. Built
+on **Sui Stack Messaging** with **Walrus** storage and **Seal** encryption —
+no centralized backend, no metadata leakage to a single host.
+
+## Why per-market chat
+
+Prediction markets are conversations, not just order books. A trader's
+*reasoning* — "I'm fading this because the polls are stale" — is as valuable
+as the trade itself. Pinning that conversation to the market it's about
+turns isolated bets into a social trading floor.
+
+## Architecture
+
+```
+User ── (sign-personal-message) ─→ Messaging SDK
+                                       │
+                                       ▼
+                                Walrus  (blob storage)
+                                       │
+                                       ▼
+                                Seal    (encryption)
+                                       │
+                                       ▼
+                          Sui Stack Messaging contract
+                                       │
+                                       ▼
+                                  Relayer (port 3001)
+                                       │
+                                       ▼
+                                Frontend renders messages
+```
+
+- **Walrus** — durable, decentralized blob storage. Each message body is a
+  Walrus blob.
+- **Seal** — per-group encryption. Only invited members can decrypt.
+- **Messaging contract** — Move-level group membership and permission
+  enforcement.
+- **Relayer** — a Rust service that watches Sui events and pushes incoming
+  messages to clients in real time. Deployed at
+  **`https://sui-stack-messaging.onrender.com`** (a fork of Mysten's
+  reference relayer running on Render).
+
+## Per-market identity
+
+Each market gets a **deterministic UUID** — FNV-1a hash of `registry +
+marketId` → UUID v8. That means clients can compute the chat-group id from
+the market id alone — no server lookup, no race conditions.
+
+## Permissions model
+
+Sui Stack Messaging splits authority into two admin types:
+
+- `PermissionsAdmin` — controls message-level permissions (read, write, etc.)
+- `ExtensionPermissionsAdmin` — controls the messaging-extension permissions
+
+The market creator gets both automatically. To invite someone, the
+**creator-only invite UI** grants `Reader / Sender / Editor / Deleter` plus
+both admin types — so the invitee can later enable auto-sign on their own
+side.
+
+## Auto-sign (one popup per group)
+
+Without auto-sign, **every** message send and read would pop the wallet for
+a signature. The fix:
+
+<Steps>
+
+### Provision a delegate keypair
+
+On first chat open, the gate card asks "Enable auto-sign · 1 popup". Clicking
+it:
+
+1. Generates a fresh **Ed25519 delegate keypair** stored in `localStorage`
+2. Sends one tx to the messaging contract granting the delegate the relevant
+   perms on this group
+3. Caches the grant locally (`dm.chat-delegate-grants.<wallet>`)
+
+### Sign through the delegate from then on
+
+Every subsequent send + read uses the delegate keypair, which signs in
+software — **zero wallet popups**.
+
+### Reset (rotate) on demand
+
+A "Reset auto-sign" pill in the active chat does a 2-click confirm,
+generates a fresh delegate, hard-reloads, and re-grants. Useful if a
+delegate key was exposed.
+
+</Steps>
+
+<Callout type="info">
+  Auto-sign is **per-group, per-wallet**. Each market chat needs its own
+  auto-sign provisioning. Once enabled, that room is silent forever.
+</Callout>
+
+## Components
+
+- **`src/lib/chat-session.ts`** — delegate keypair lifecycle (generate,
+  store, retrieve, rotate). Supports both bech32 `suiprivkey…` and raw hex.
+- **`src/lib/messaging.ts`** — wraps `@mysten/sui-stack-messaging` for our
+  group conventions.
+- **`MessagingClientProvider`** — wraps the app, exposes both a wallet
+  client and a delegate client side-by-side via React context.
+- **`MarketChat.tsx`** — the chat UI component, embedded in the Chart /
+  Chat tab strip on the market detail page.
+
+## Reset auto-sign UX
+
+The chat header has a small **Reset auto-sign** pill in the active state.
+A two-click confirm (the pill pulses on first click) rotates the delegate
+keypair, hard-reloads to refresh context, and re-grants on next message.
+
+## Known limits
+
+- **Each user needs an admin-level invite** to enable auto-sign in their own
+  side of the chat. The creator gets it automatically; invitees need the
+  `PermissionsAdmin` + `ExtensionPermissionsAdmin` grant in their invite.
+- **Relayer subscription drops** — the relayer's gRPC subscription to the
+  public testnet RPC occasionally drops. Restarting the relayer recovers it.
+
+## Related
+
+- [Spot YES/NO Markets](/products/spot-markets) — markets get chat rooms
+- [Architecture](/architecture) — where chat sits in the L01-L05 stack

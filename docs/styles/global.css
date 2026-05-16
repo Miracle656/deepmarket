@@ -1,0 +1,231 @@
+/* ── DeepMarket Brand Manual — Nextra 3 overrides ──────────────────────
+   Mirrors the main app palette in deepmarket/src/index.css.
+   Kept deliberately minimal: typography + accent color + clean tables/
+   code blocks. No background patterns — they read as generic AI
+   chrome and distract from the content.
+──────────────────────────────────────────────────────────────────────── */
+
+:root {
+    /* DeepMarket brand tokens */
+    --dm-bg-root: #04080f;
+    --dm-bg-nav: #060c17;
+    --dm-bg-panel: #0a1628;
+    --dm-bg-card: #0d1f3c;
+    --dm-blue: #1c6fff;
+    --dm-blue-soft: #4d9fff;
+    --dm-blue-tint: rgba(28, 111, 255, 0.10);
+    --dm-blue-edge: rgba(28, 111, 255, 0.30);
+    --dm-rose: #ff4d6a;
+    --dm-text: #e8edf5;
+    --dm-text-muted: #7b8ea8;
+    --dm-border: rgba(255, 255, 255, 0.08);
+
+    /* Nextra 3 accent → Brand blue. Hue 217 ≈ #1c6fff */
+    --nextra-primary-hue: 217deg;
+    --nextra-primary-saturation: 100%;
+}
+
+/* ── Typography ────────────────────────────────────────────────────────
+   Inter for everything; JetBrains Mono for code. !important is needed
+   to win over Nextra's tailwind defaults. */
+
+html,
+body,
+button,
+input,
+select,
+textarea {
+    font-family:
+        'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI',
+        sans-serif !important;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+code,
+pre,
+kbd,
+samp,
+.nextra-code,
+.nextra-code-block {
+    font-family:
+        'JetBrains Mono', ui-monospace, 'Cascadia Mono', Consolas,
+        monospace !important;
+    font-weight: 500;
+}
+
+article h1,
+article h2,
+article h3,
+article h4,
+article h5,
+article h6,
+.nextra-content h1,
+.nextra-content h2,
+.nextra-content h3 {
+    font-family: 'Inter', sans-serif !important;
+    letter-spacing: -0.02em !important;
+}
+
+article h1,
+.nextra-content h1 {
+    font-weight: 800 !important;
+    letter-spacing: -0.03em !important;
+    /* Generous line-height so multi-line titles don't collide. */
+    line-height: 1.15 !important;
+}
+article h2,
+.nextra-content h2 {
+    font-weight: 700 !important;
+}
+article h3,
+.nextra-content h3 {
+    font-weight: 600 !important;
+}
+
+/* ── Dark theme — flat background, no busy grid ────────────────────── */
+
+html.dark body {
+    background-color: var(--dm-bg-root);
+    color: var(--dm-text);
+}
+
+/* Nav bar: deep, glassy */
+html.dark .nextra-nav-container,
+html.dark .nextra-nav-container-blur {
+    background-color: rgba(6, 12, 23, 0.82) !important;
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+    border-bottom: 1px solid var(--dm-border);
+}
+
+/* Sidebar — solid on mobile (slide-in drawer), translucent on desktop */
+html.dark aside.nextra-sidebar-container {
+    background-color: rgba(10, 22, 40, 0.55) !important;
+    border-right: 1px solid var(--dm-border);
+}
+@media (max-width: 767px) {
+    html.dark aside.nextra-sidebar-container {
+        background-color: var(--dm-bg-nav) !important;
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+    }
+}
+
+/* Sidebar active state: branded blue accent */
+html.dark .nextra-sidebar-container a:hover {
+    color: var(--dm-blue) !important;
+    background-color: var(--dm-blue-tint) !important;
+}
+html.dark .nextra-sidebar-container a.active,
+html.dark .nextra-sidebar-container li.active > a {
+    color: var(--dm-blue) !important;
+    background: var(--dm-blue-tint) !important;
+    border-left: 2px solid var(--dm-blue);
+    font-weight: 600;
+}
+
+/* TOC right rail */
+html.dark .nextra-toc a:hover {
+    color: var(--dm-blue) !important;
+}
+
+/* ── Content typography accents ────────────────────────────────────── */
+
+/* Links — brand blue with a clean underline-on-hover */
+html.dark .nextra-content a {
+    color: var(--dm-blue);
+    text-decoration: none;
+    border-bottom: 1px solid var(--dm-blue-edge);
+    transition: border-color 150ms ease;
+}
+html.dark .nextra-content a:hover {
+    border-bottom-color: var(--dm-blue);
+}
+
+/* Inline code — subtle, branded */
+html.dark .nextra-content :not(pre) > code {
+    background: var(--dm-blue-tint) !important;
+    border: 1px solid var(--dm-blue-edge) !important;
+    color: #a8c5ff !important;
+    border-radius: 4px;
+    padding: 1px 6px;
+    font-size: 0.86em;
+}
+
+/* Code blocks — panel color, subtle inset highlight */
+html.dark .nextra-code-block,
+html.dark pre {
+    background: var(--dm-bg-card) !important;
+    border: 1px solid var(--dm-border) !important;
+    border-radius: 10px !important;
+    box-shadow: 0 1px 0 rgba(28, 111, 255, 0.12) inset;
+}
+
+/* ── Tables — rounded, mobile-safe ─────────────────────────────────── */
+html.dark .nextra-content table {
+    border: 1px solid var(--dm-border);
+    border-radius: 10px;
+    overflow-x: auto;
+    display: block;
+    width: 100%;
+    max-width: 100%;
+}
+html.dark .nextra-content thead {
+    background: var(--dm-blue-tint);
+}
+html.dark .nextra-content th {
+    color: var(--dm-text) !important;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    border-bottom: 1px solid var(--dm-blue-edge) !important;
+}
+html.dark .nextra-content td,
+html.dark .nextra-content th {
+    border-color: var(--dm-border) !important;
+    word-break: break-word;
+}
+html.dark .nextra-content td code,
+html.dark .nextra-content th code {
+    word-break: break-all;
+    font-size: 0.78em;
+}
+
+/* ── Cards (homepage grid) ─────────────────────────────────────────── */
+html.dark .nextra-content [class*='nx-rounded-lg'][href] {
+    background: var(--dm-bg-panel) !important;
+    border: 1px solid var(--dm-border) !important;
+    transition:
+        border-color 150ms ease,
+        transform 150ms ease,
+        box-shadow 150ms ease;
+}
+html.dark .nextra-content [class*='nx-rounded-lg'][href]:hover {
+    border-color: var(--dm-blue-edge) !important;
+    transform: translateY(-2px);
+    box-shadow: 0 12px 32px -12px rgba(28, 111, 255, 0.25);
+}
+
+/* ── Scrollbar (branded thumb) ─────────────────────────────────────── */
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+::-webkit-scrollbar-thumb {
+    background: rgba(28, 111, 255, 0.4);
+    border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: var(--dm-blue);
+}
+
+/* ── Light theme — readable, still branded ─────────────────────────── */
+html.light body {
+    background-color: #f7f9fc;
+}
+html.light .nextra-content a {
+    color: var(--dm-blue);
+}

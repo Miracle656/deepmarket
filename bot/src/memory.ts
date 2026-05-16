@@ -226,11 +226,44 @@ export function summarizeMemory(mem: UserMemory): {
     };
 }
 
+/**
+ * Count of losses in the most recent unbroken losing streak (newest trades
+ * first; stops at the first win or pending). Drives the hard cooldown — a
+ * long streak means the agent is mispriced on the current regime, so we
+ * stop minting entirely for a few ticks rather than just shrinking size.
+ */
+export function consecutiveLosses(mem: UserMemory): number {
+    let streak = 0;
+    for (const t of mem.trades) {
+        if (t.payoutUsd === undefined) continue; // skip still-pending
+        if (t.won) break;
+        streak += 1;
+    }
+    return streak;
+}
+
 /** USD of new exposure (cover) opened in the last hour, for rate-limiting. */
 export function exposureLastHourUsd(mem: UserMemory): number {
     const hourAgo = Date.now() - 60 * 60 * 1000;
     return mem.trades
         .filter((t) => t.ts >= hourAgo)
+        .reduce((sum, t) => sum + t.coverUsd, 0);
+}
+
+/**
+ * USD of cover minted since 00:00 UTC today. This is the input to the
+ * HARD daily spend cap — unlike the hourly window it does not roll, so
+ * once the day's budget is spent the bot stops minting until UTC midnight.
+ */
+export function spentTodayUsd(mem: UserMemory): number {
+    const now = new Date();
+    const startOfDayUtc = Date.UTC(
+        now.getUTCFullYear(),
+        now.getUTCMonth(),
+        now.getUTCDate()
+    );
+    return mem.trades
+        .filter((t) => t.ts >= startOfDayUtc)
         .reduce((sum, t) => sum + t.coverUsd, 0);
 }
 

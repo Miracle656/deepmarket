@@ -1,9 +1,9 @@
-use std::time::Duration;
-use sui_sdk::SuiClient;
+use crate::db::DbStore;
 use anyhow::Result;
 use serde::Deserialize;
+use std::time::Duration;
 use sui_sdk::rpc_types::EventFilter;
-use crate::db::DbStore;
+use sui_sdk::SuiClient;
 
 const DEEPBOOK_PKG: &str = "0x2c68443db9e8c813b194010c11040a3ce59f47e4eb97a2ec805371505dad7459";
 
@@ -55,7 +55,11 @@ pub async fn run_indexer(sui_client: SuiClient, db: DbStore) -> Result<()> {
             module: "market_factory".parse()?,
         };
 
-        match sui_client.event_api().query_events(filter, None, None, true).await {
+        match sui_client
+            .event_api()
+            .query_events(filter, None, None, true)
+            .await
+        {
             Ok(events_page) => {
                 let len = events_page.data.len();
                 if len > 0 {
@@ -83,7 +87,8 @@ pub async fn run_indexer(sui_client: SuiClient, db: DbStore) -> Result<()> {
                                     parsed.yes_pool_id.as_deref().unwrap_or(""),
                                     parsed.no_pool_id.as_deref().unwrap_or(""),
                                     token_pkg,
-                                ).await?;
+                                )
+                                .await?;
                                 db.save_price_point(market_id, 50, 50).await?;
                             }
                             Err(e) => eprintln!("Failed to parse MarketCreatedEvent: {e}"),
@@ -124,10 +129,15 @@ pub async fn run_indexer(sui_client: SuiClient, db: DbStore) -> Result<()> {
                 module: "pool".parse()?,
             };
 
-            match sui_client.event_api().query_events(fill_filter, None, Some(50), true).await {
+            match sui_client
+                .event_api()
+                .query_events(fill_filter, None, Some(50), true)
+                .await
+            {
                 Ok(events_page) => {
                     for event in events_page.data {
-                        let fill_event_id = format!("{}-{}", event.id.tx_digest, event.id.event_seq);
+                        let fill_event_id =
+                            format!("{}-{}", event.id.tx_digest, event.id.event_seq);
                         if db.is_event_processed(&fill_event_id).await {
                             continue;
                         }
@@ -141,8 +151,18 @@ pub async fn run_indexer(sui_client: SuiClient, db: DbStore) -> Result<()> {
                                 if pool_id.is_empty() {
                                     continue;
                                 }
-                                let base_qty: u64 = fill.base_quantity.as_deref().unwrap_or("0").parse().unwrap_or(0);
-                                let quote_qty: u64 = fill.quote_quantity.as_deref().unwrap_or("0").parse().unwrap_or(0);
+                                let base_qty: u64 = fill
+                                    .base_quantity
+                                    .as_deref()
+                                    .unwrap_or("0")
+                                    .parse()
+                                    .unwrap_or(0);
+                                let quote_qty: u64 = fill
+                                    .quote_quantity
+                                    .as_deref()
+                                    .unwrap_or("0")
+                                    .parse()
+                                    .unwrap_or(0);
                                 if base_qty == 0 {
                                     continue;
                                 }
@@ -151,11 +171,16 @@ pub async fn run_indexer(sui_client: SuiClient, db: DbStore) -> Result<()> {
                                 let tx_digest = event.id.tx_digest.to_string();
                                 let order_id = fill.taker_order_id.as_deref().unwrap_or(&tx_digest);
 
-                                if let Ok(Some(market_id)) = db.get_market_by_pool_id(pool_id).await {
-                                    db.save_fill(market_id, order_id, price, base_qty, &tx_digest).await.ok();
+                                if let Ok(Some(market_id)) = db.get_market_by_pool_id(pool_id).await
+                                {
+                                    db.save_fill(market_id, order_id, price, base_qty, &tx_digest)
+                                        .await
+                                        .ok();
                                     // Save as yes_price (clamped 0-100)
                                     let yes_p = (price as i32).clamp(0, 100);
-                                    db.save_price_point(market_id, yes_p, 100 - yes_p).await.ok();
+                                    db.save_price_point(market_id, yes_p, 100 - yes_p)
+                                        .await
+                                        .ok();
                                 }
                                 db.mark_event_processed(&fill_event_id).await.ok();
                             }

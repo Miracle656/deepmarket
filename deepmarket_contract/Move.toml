@@ -1,7 +1,7 @@
 [package]
 name = "deepmarket_contract"
 edition = "2024.beta" # edition = "legacy" to use legacy (pre-2024) Move
-published-at = "0x6d968a4810498a16f18beca840667350ed5aafc119c3d8cbd3033676b622c774"
+published-at = "0xf2189af211ace44b5365d3c0cb8a8b96137897957fa53b7f83570db0f1f10068"
 # license = ""           # e.g., "MIT", "GPL", "Apache 2.0"
 # authors = ["..."]      # e.g., ["Joe Smith (joesmith@noemail.com)", "John Snow (johnsnow@noemail.com)"]
 

@@ -1,6 +1,6 @@
-use redis::{AsyncCommands, Client as RedisClient, aio::MultiplexedConnection};
-use sqlx::{PgPool, postgres::PgPoolOptions};
 use anyhow::Result;
+use redis::{aio::MultiplexedConnection, AsyncCommands, Client as RedisClient};
+use sqlx::{postgres::PgPoolOptions, PgPool};
 
 #[derive(Clone)]
 pub struct DbStore {
@@ -28,7 +28,7 @@ impl DbStore {
                 token_package_id TEXT,
                 volume BIGINT DEFAULT 0,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )"
+            )",
         )
         .execute(&pg_pool)
         .await?;
@@ -50,7 +50,7 @@ impl DbStore {
                 qty BIGINT,
                 tx_digest TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )"
+            )",
         )
         .execute(&pg_pool)
         .await?;
@@ -62,7 +62,7 @@ impl DbStore {
                 yes_price INT,
                 no_price INT,
                 timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )"
+            )",
         )
         .execute(&pg_pool)
         .await?;
@@ -71,7 +71,7 @@ impl DbStore {
             "CREATE TABLE IF NOT EXISTS processed_events (
                 event_id TEXT PRIMARY KEY,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )"
+            )",
         )
         .execute(&pg_pool)
         .await?;
@@ -79,10 +79,20 @@ impl DbStore {
         let client = RedisClient::open(redis_url)?;
         let redis_conn = client.get_multiplexed_async_connection().await?;
 
-        Ok(Self { pg_pool, redis_conn })
+        Ok(Self {
+            pg_pool,
+            redis_conn,
+        })
     }
 
-    pub async fn save_fill(&self, market_id: u64, order_id: &str, price: u64, qty: u64, tx_digest: &str) -> Result<()> {
+    pub async fn save_fill(
+        &self,
+        market_id: u64,
+        order_id: &str,
+        price: u64,
+        qty: u64,
+        tx_digest: &str,
+    ) -> Result<()> {
         sqlx::query(
             "INSERT INTO fills (market_id, order_id, price, qty, tx_digest) VALUES ($1, $2, $3, $4, $5)"
         )
@@ -137,19 +147,22 @@ impl DbStore {
     }
 
     pub async fn resolve_market_db(&self, market_id: u64, outcome: bool) -> Result<()> {
-        sqlx::query(
-            "UPDATE markets SET status = 'Resolved', outcome = $1 WHERE market_id = $2"
-        )
-        .bind(outcome)
-        .bind(market_id as i64)
-        .execute(&self.pg_pool)
-        .await?;
+        sqlx::query("UPDATE markets SET status = 'Resolved', outcome = $1 WHERE market_id = $2")
+            .bind(outcome)
+            .bind(market_id as i64)
+            .execute(&self.pg_pool)
+            .await?;
         Ok(())
     }
 
-    pub async fn save_price_point(&self, market_id: u64, yes_price: i32, no_price: i32) -> Result<()> {
+    pub async fn save_price_point(
+        &self,
+        market_id: u64,
+        yes_price: i32,
+        no_price: i32,
+    ) -> Result<()> {
         sqlx::query(
-            "INSERT INTO price_history (market_id, yes_price, no_price) VALUES ($1, $2, $3)"
+            "INSERT INTO price_history (market_id, yes_price, no_price) VALUES ($1, $2, $3)",
         )
         .bind(market_id as i64)
         .bind(yes_price)
@@ -160,11 +173,13 @@ impl DbStore {
     }
 
     pub async fn is_event_processed(&self, event_id: &str) -> bool {
-        sqlx::query_scalar::<_, bool>("SELECT EXISTS(SELECT 1 FROM processed_events WHERE event_id = $1)")
-            .bind(event_id)
-            .fetch_one(&self.pg_pool)
-            .await
-            .unwrap_or(false)
+        sqlx::query_scalar::<_, bool>(
+            "SELECT EXISTS(SELECT 1 FROM processed_events WHERE event_id = $1)",
+        )
+        .bind(event_id)
+        .fetch_one(&self.pg_pool)
+        .await
+        .unwrap_or(false)
     }
 
     pub async fn mark_event_processed(&self, event_id: &str) -> Result<()> {
@@ -185,7 +200,11 @@ impl DbStore {
     }
 
     /// Returns fills as (price, qty, tx_digest)
-    pub async fn get_latest_fills(&self, market_id: u64, limit: i64) -> Result<Vec<(i64, i64, String)>> {
+    pub async fn get_latest_fills(
+        &self,
+        market_id: u64,
+        limit: i64,
+    ) -> Result<Vec<(i64, i64, String)>> {
         let rows: Vec<(i64, i64, String)> = sqlx::query_as(
             "SELECT price, qty, tx_digest FROM fills WHERE market_id = $1 ORDER BY created_at DESC LIMIT $2"
         )
@@ -198,7 +217,7 @@ impl DbStore {
 
     pub async fn get_market_by_pool_id(&self, pool_id: &str) -> Result<Option<u64>> {
         let row: Option<(i64,)> = sqlx::query_as(
-            "SELECT market_id FROM markets WHERE yes_pool_id = $1 OR no_pool_id = $1 LIMIT 1"
+            "SELECT market_id FROM markets WHERE yes_pool_id = $1 OR no_pool_id = $1 LIMIT 1",
         )
         .bind(pool_id)
         .fetch_optional(&self.pg_pool)
@@ -207,12 +226,11 @@ impl DbStore {
     }
 
     pub async fn get_token_package_id(&self, market_id: u64) -> Result<Option<String>> {
-        let row: Option<(Option<String>,)> = sqlx::query_as(
-            "SELECT token_package_id FROM markets WHERE market_id = $1"
-        )
-        .bind(market_id as i64)
-        .fetch_optional(&self.pg_pool)
-        .await?;
+        let row: Option<(Option<String>,)> =
+            sqlx::query_as("SELECT token_package_id FROM markets WHERE market_id = $1")
+                .bind(market_id as i64)
+                .fetch_optional(&self.pg_pool)
+                .await?;
         Ok(row.and_then(|(pkg,)| pkg))
     }
 
@@ -228,11 +246,18 @@ impl DbStore {
 
     pub async fn set_last_processed_checkpoint(&self, seq: u64) -> Result<()> {
         let mut conn = self.redis_conn.clone();
-        let _: () = conn.set("last_processed_checkpoint", seq.to_string()).await?;
+        let _: () = conn
+            .set("last_processed_checkpoint", seq.to_string())
+            .await?;
         Ok(())
     }
 
-    pub async fn update_order_state(&self, market_id: u64, order_id: &str, state: &str) -> Result<()> {
+    pub async fn update_order_state(
+        &self,
+        market_id: u64,
+        order_id: &str,
+        state: &str,
+    ) -> Result<()> {
         let mut conn = self.redis_conn.clone();
         let key = format!("market:{}:orders", market_id);
         let _: () = conn.hset(key, order_id, state).await?;

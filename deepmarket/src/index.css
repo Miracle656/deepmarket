@@ -1382,6 +1382,26 @@ body {
   border-color: var(--border-strong);
 }
 
+/* ──────────────────────────────── INPUTS ──────────────────────────────── */
+.input {
+  background: var(--bg-base, #0a0f1a);
+  border: 1px solid var(--border-base);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: 0.85rem;
+  font-family: inherit;
+  padding: 9px 12px;
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.input::placeholder {
+  color: var(--text-muted);
+}
+.input:focus {
+  border-color: var(--yes, #1c6fff);
+  box-shadow: 0 0 0 3px rgba(28, 111, 255, 0.15);
+}
+
 /* ──────────────────────────────── ALERTS ──────────────────────────────── */
 .alert {
   display: block;
@@ -3089,4 +3109,119 @@ html.has-horizontal-pin body, body { overflow-x: hidden; }
   .predict-grid { grid-template-columns: 1fr; }
   .predict-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .predict-svi-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+/* ──────────────────────── MOBILE NAV / HAMBURGER ───────────────────────
+   Default state: hamburger hidden, nav-tabs visible (desktop).
+   Below 900px: nav-tabs hide, hamburger shows, tap opens an overlay
+   drawer sliding in from the right with the nav links.
+─────────────────────────────────────────────────────────────────────── */
+.nav-hamburger {
+  display: none;
+  width: 36px;
+  height: 36px;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-hover);
+  border: 1px solid var(--border-base);
+  border-radius: 8px;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: border-color 150ms ease, background 150ms ease;
+}
+.nav-hamburger:hover {
+  border-color: var(--yes);
+  background: var(--blue-dim);
+}
+
+@media (max-width: 900px) {
+  .nav-tabs { display: none; }
+  .nav-hamburger { display: flex; }
+}
+
+/* — Drawer overlay (full-screen tap-to-close backdrop) — */
+.mobile-drawer-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(4, 8, 15, 0.6);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  z-index: 999;
+  display: flex;
+  justify-content: flex-end;
+  animation: mobileDrawerFade 180ms ease;
+}
+@keyframes mobileDrawerFade {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* — Drawer panel (slides in from the right) — */
+.mobile-drawer-panel {
+  width: min(86%, 320px);
+  height: 100vh;
+  background: var(--bg-nav);
+  border-left: 1px solid var(--border-strong);
+  padding: 18px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  animation: mobileDrawerSlide 220ms cubic-bezier(0.22, 1, 0.36, 1);
+  box-shadow: -16px 0 48px rgba(0, 0, 0, 0.45);
+}
+@keyframes mobileDrawerSlide {
+  from { transform: translateX(100%); }
+  to   { transform: translateX(0); }
+}
+
+.mobile-drawer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border-base);
+}
+.mobile-drawer-close {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid var(--border-base);
+  border-radius: 8px;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.mobile-drawer-close:hover {
+  color: var(--no);
+  border-color: var(--no-border);
+}
+
+.mobile-drawer-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 4px;
+}
+.mobile-drawer-link {
+  padding: 12px 14px;
+  border-radius: 8px;
+  text-decoration: none;
+  color: var(--text-primary);
+  font-weight: 500;
+  font-size: 0.95rem;
+  border: 1px solid transparent;
+  transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+.mobile-drawer-link:hover {
+  background: var(--blue-dim);
+  border-color: var(--yes-border);
+  color: var(--yes);
+}
+.mobile-drawer-link.active {
+  background: var(--blue-dim);
+  border-color: var(--yes);
+  color: var(--yes);
+  font-weight: 700;
 }

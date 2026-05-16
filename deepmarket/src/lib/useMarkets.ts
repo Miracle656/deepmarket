@@ -3,9 +3,15 @@ import { useSuiClient } from '@mysten/dapp-kit';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { CONFIG, type Market, type MarketStatus } from './config';
 
+// Indexer URL — set VITE_INDEXER_URL in .env for deploys. Defaults to
+// localhost:3000 for local development.
+const INDEXER_URL =
+    (import.meta.env.VITE_INDEXER_URL as string | undefined) ??
+    'http://localhost:3000';
+
 async function fetchMarketsFromChain(_sui: ReturnType<typeof useSuiClient>): Promise<Market[]> {
     try {
-        const res = await fetch('http://localhost:3000/markets');
+        const res = await fetch(`${INDEXER_URL}/markets`);
         if (!res.ok) throw new Error('Failed to fetch markets');
         const data = await res.json();
 
@@ -20,7 +26,7 @@ async function fetchMarketsFromChain(_sui: ReturnType<typeof useSuiClient>): Pro
             } else {
                 // Try to get real price from history
                 try {
-                    const histRes = await fetch(`http://localhost:3000/markets/${m.market_id}/history`);
+                    const histRes = await fetch(`${INDEXER_URL}/markets/${m.market_id}/history`);
                     const histData = await histRes.json();
                     const pts: any[] = histData.history ?? [];
                     yesPrice = pts.length > 0 ? pts[pts.length - 1].yes_price : 50;

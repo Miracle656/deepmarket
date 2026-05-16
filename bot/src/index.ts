@@ -4,6 +4,7 @@
 // happens via inline keyboard buttons attached to a single message that
 // gets edited in place on each tap.
 
+import express from 'express';
 import { Markup, Telegraf, type Context } from 'telegraf';
 import type { InlineKeyboardButton, InlineKeyboardMarkup } from 'telegraf/types';
 import { CONFIG } from './config.js';
@@ -74,15 +75,31 @@ const SUI_ADDR_RE = /^0x[a-fA-F0-9]{64}$/;
 // Helpers
 // ────────────────────────────────────────────────────────────────────────────
 
+/**
+ * The address all menu lookups should use: prefer the custodial bot wallet
+ * (where actual trading happens) over the `/start <addr>` tracking address.
+ * Trader-only users have suiAddr = 0x0…0 placeholder; without this helper
+ * the menu would render those zeros and lookups would all 404.
+ */
+function effectiveAddr(sub: {
+    botWalletAddr?: string;
+    suiAddr: string;
+}): string {
+    return sub.botWalletAddr && sub.botWalletAddr.length > 0
+        ? sub.botWalletAddr
+        : sub.suiAddr;
+}
+
 async function loadMenuState(chatId: number): Promise<MenuState> {
     const sub = await getSubscription(chatId);
     if (!sub) return { muted: false };
+    const addr = effectiveAddr(sub);
     const state: MenuState = {
-        addr: sub.suiAddr,
+        addr,
         muted: sub.muted,
     };
     try {
-        const managerId = await findManagerByOwner(sub.suiAddr);
+        const managerId = await findManagerByOwner(addr);
         if (managerId) {
             const summary = await getManagerSummary(managerId);
             if (summary) {
@@ -99,7 +116,7 @@ async function loadMenuState(chatId: number): Promise<MenuState> {
         const markets = await listMarkets();
         let count = 0;
         for (const m of markets) {
-            const p = await getMarketPosition(m.id, sub.suiAddr);
+            const p = await getMarketPosition(m.id, addr);
             const { yes, no } = decodeBalance(p);
             if (yes > 0.0001 || no > 0.0001) count++;
         }
@@ -157,8 +174,9 @@ async function buildPositionsView(chatId: number): Promise<{
             extra: { reply_markup: { inline_keyboard: [backButton('menu:main')] } },
         };
     }
+    const addr = effectiveAddr(sub);
     const lines: string[] = [
-        `*Positions for* \`${sub.suiAddr.slice(0, 10)}…${sub.suiAddr.slice(-6)}\``,
+        `*Positions for* \`${addr.slice(0, 10)}…${addr.slice(-6)}\``,
         '',
     ];
 
@@ -167,7 +185,7 @@ async function buildPositionsView(chatId: number): Promise<{
         const markets = await listMarkets();
         const held: { m: SpotMarket; yes: number; no: number }[] = [];
         for (const m of markets) {
-            const p = await getMarketPosition(m.id, sub.suiAddr);
+            const p = await getMarketPosition(m.id, addr);
             const { yes, no } = decodeBalance(p);
             if (yes > 0.0001 || no > 0.0001) held.push({ m, yes, no });
         }
@@ -188,7 +206,7 @@ async function buildPositionsView(chatId: number): Promise<{
 
     // Predict
     try {
-        const managerId = await findManagerByOwner(sub.suiAddr);
+        const managerId = await findManagerByOwner(addr);
         if (!managerId) {
             lines.push('*PREDICT* _(no manager yet)_');
         } else {
@@ -312,7 +330,7 @@ async function buildPredictMineView(chatId: number): Promise<{
             },
         };
     }
-    const mid = await findManagerByOwner(sub.suiAddr);
+    const mid = await findManagerByOwner(effectiveAddr(sub));
     if (!mid) {
         return {
             text: '*Predict positions*\n_No manager yet. Mint your first position in the app._',
@@ -386,7 +404,10 @@ async function main() {
     // Plain text route:
     //   - If pendingImport is set → treat as private key (Generate/Import flow)
     //   - Else if text looks like a Sui address → set it as the tracked addr
-    bot.on('text', async (ctx) => {
+    //   - Otherwise call next() so later handlers (bot.hears('rotate-yes'),
+    //     etc.) still get a shot — a bare `return` here would swallow the
+    //     update and silently break every command registered after this one.
+    bot.on('text', async (ctx, next) => {
         const text = ctx.message.text.trim();
 
         if (await isPendingImport(ctx.chat.id)) {
@@ -411,7 +432,7 @@ async function main() {
             return;
         }
 
-        if (!SUI_ADDR_RE.test(text)) return;
+        if (!SUI_ADDR_RE.test(text)) return next();
         await upsertSubscription(ctx.chat.id, text);
         await ctx.reply(
             `✅ Now tracking \`${text.slice(0, 10)}…${text.slice(-6)}\`.`,
@@ -744,8 +765,64 @@ async function main() {
 
     const stopWatchers = startWatchers(bot);
     const stopStrategy = startStrategyLoop(bot);
-    await bot.launch();
-    console.log(`[bot] launched. polling every ${CONFIG.POLL_MS}ms`);
+
+    // Run modes (decided by env):
+    //
+    //   - PORT set (hosted, e.g. Render) → always bind an HTTP server on
+    //     PORT so Render's port-scan succeeds and the dyno doesn't get
+    //     killed for "no open ports". The bot itself runs in webhook mode
+    //     when WEBHOOK_DOMAIN is also set, or long-poll while you bootstrap
+    //     (e.g. before you know the Render URL to put into WEBHOOK_DOMAIN).
+    //
+    //   - PORT unset (local dev) → pure long-poll, no HTTP server.
+    const webhookDomain = process.env.WEBHOOK_DOMAIN?.replace(/\/$/, '');
+    const port = process.env.PORT ? Number(process.env.PORT) : null;
+
+    if (port) {
+        const app = express();
+        app.use(express.json());
+        app.get('/health', (_req, res) => {
+            res.json({
+                service: 'deepmarket-bot',
+                status: 'ok',
+                mode: webhookDomain ? 'webhook' : 'long-poll',
+            });
+        });
+        app.get('/', (_req, res) => {
+            res.json({
+                service: 'deepmarket-bot',
+                status: 'ok',
+                webhook: webhookDomain
+                    ? `${webhookDomain}/telegram-webhook`
+                    : null,
+            });
+        });
+
+        if (webhookDomain) {
+            app.use(bot.webhookCallback('/telegram-webhook'));
+            app.listen(port, () => {
+                console.log(`[bot] webhook server listening on :${port}`);
+            });
+            const hookUrl = `${webhookDomain}/telegram-webhook`;
+            await bot.telegram.setWebhook(hookUrl);
+            console.log(`[bot] webhook registered: ${hookUrl}`);
+        } else {
+            // Hosted but no domain configured yet — keep the HTTP server up
+            // (so Render's health check stays green) and fall back to long-poll
+            // for actual Telegram updates.
+            app.listen(port, () => {
+                console.log(
+                    `[bot] HTTP server listening on :${port} (long-poll mode — set WEBHOOK_DOMAIN to switch to webhook)`
+                );
+            });
+            await bot.launch();
+            console.log('[bot] launched via long-poll');
+        }
+    } else {
+        // Local development — no Render, no HTTP server, just long-poll.
+        await bot.launch();
+        console.log(`[bot] launched via long-poll. polling every ${CONFIG.POLL_MS}ms`);
+    }
 
     const shutdown = () => {
         stopWatchers();

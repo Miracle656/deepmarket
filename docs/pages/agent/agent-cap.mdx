@@ -1,0 +1,183 @@
+import { Callout, Steps } from 'nextra/components'
+
+# AgentCap
+
+**AgentCap is DeepMarket's on-chain agent authorization.** It's a Move
+object the user owns that says "agent X may trade up to $Y/day on my behalf
+until Z." Every decision the agent makes is logged on-chain via an
+`AgentDecisionMade` event. The user can revoke in one transaction — and the
+contract enforces it: `record_decision` aborts on a revoked cap, so a
+revoked agent literally cannot post a fake "I'm still authorized" entry.
+
+Source: `deepmarket_contract/sources/agent_cap.move`.
+
+## The four properties
+
+| | |
+|---|---|
+| **On-chain policy** | The cap is a Sui object — `{ owner, agent, daily_spend_cap_usd, expires_at_ms, allowed_oracles, revoked }` |
+| **Capped budget** | Every decision tx asserts the cap exists and is unrevoked |
+| **On-chain audit log** | Every agent action emits an `AgentDecisionMade` event with strike, direction, cover, and a sha256 of the rationale |
+| **Owner revocation** | The owner can flip `revoked = true` in one tx; the next agent action aborts |
+
+These four properties together are what makes the bot **non-custodial-ish**:
+the bot's wallet still signs the mints, but the *authorization* for those
+mints is a Move object the user owns. Revoking yanks the authorization at
+the contract level, not just in some off-chain config.
+
+## The objects + functions
+
+```move
+public struct AgentCap has key, store {
+    id: UID,
+    owner: address,                   // signs revoke / update
+    agent: address,                   // signs record_decision
+    daily_spend_cap_usd: u64,         // 1e6 dUSDC units
+    expires_at_ms: u64,
+    allowed_oracles: vector<ID>,      // empty = unrestricted
+    revoked: bool,
+    created_at_ms: u64,
+}
+```
+
+```move
+public fun create(agent, daily_cap, expires_at, allowed_oracles, clock, ctx)
+public fun record_decision(cap, oracle_id, is_mint, direction_up, strike,
+                            cover_usd, rationale_hash, clock, ctx)
+public fun revoke(cap, clock, ctx)
+public fun update(cap, new_daily_cap, new_expires_at, clock, ctx)
+```
+
+## Why shared, not owned
+
+`create` does `transfer::share_object(cap)` — **the cap is a shared object**.
+That's required so the agent (a *different address* from the owner) can
+reference the cap in `record_decision` txs. Access control stays correct
+because `revoke` and `update` still assert `ctx.sender() == owner`, and
+`record_decision` asserts `ctx.sender() == agent`. Sharing doesn't weaken
+authority; it just lets two parties touch the same object.
+
+## The flow
+
+<Steps>
+
+### Owner mints the cap
+
+The user opens `/agent` in the web app, pastes the bot's custodial wallet
+address, sets a daily cap (USD) and a duration (days), and signs:
+
+```ts
+agent_cap::create(
+  agent: 0xe5a70e01…,                   // bot wallet
+  daily_spend_cap_usd: 5_000_000,       // $5 in dUSDC base units
+  expires_at_ms: now + 30 * 86_400_000, // 30 days
+  allowed_oracles: [],                  // unrestricted
+)
+```
+
+The tx emits `AgentCapCreated`. The cap is a shared object owned-in-spirit
+by the user.
+
+### Bot auto-discovers it
+
+The bot's `findAgentCapForBot(botWalletAddr)` queries
+`AgentCapCreated` events and matches by `agent == botWalletAddr`. The
+discovered cap id is cached in `subs.json`.
+
+### Every decision is logged
+
+After each successful mint, the bot signs:
+
+```ts
+agent_cap::record_decision(
+  cap: <shared object>,
+  oracle_id, is_mint=true, direction_up, strike, cover_usd,
+  rationale_hash: sha256(rationale).slice(0,32),
+)
+```
+
+That emits an `AgentDecisionMade` event readable by anyone, forever. The
+**rationale is NOT on-chain** (kept in MemWal); only its hash is. This keeps
+the audit cheap while preserving content-addressed integrity.
+
+### Owner can revoke any time
+
+The Revoke button on `/agent` signs `agent_cap::revoke(cap)`. The cap's
+`revoked` flag flips to true. The bot detects this on the next strategy
+tick (it caches the state and re-reads it), DMs the user "🛑 Agent paused",
+and stops minting. Auto-redeem of existing positions still runs so funds
+never trap.
+
+### Update without revoke
+
+`agent_cap::update(cap, new_daily_cap, new_expires_at)` lets the owner
+adjust limits without rotating the cap. Useful if you want to raise/lower
+the daily allowance.
+
+</Steps>
+
+## Type-identity quirk
+
+`agent_cap` was added in the v1→v2 upgrade of `deepmarket_contract`. A Move
+struct's type identity is rooted at the package version where its module
+was **first published** — *not* the package's original v1 id. So the event
+type `AgentCapCreated` lives at:
+
+```
+0xf2189af2…::agent_cap::AgentCapCreated   ← v2 (where module was added)
+```
+
+while `moveCall` targets use the latest id (v3 `0x50a58add…`). Both the bot
+(`bot/src/agent-cap.ts`) and the frontend
+(`deepmarket/src/lib/agent-cap.ts`) encode this split:
+
+```ts
+const TYPE_ORIGIN = '0xf2189af2…'   // for event queries
+const PKG         = '0x50a58add…'   // for moveCall targets
+```
+
+<Callout type="warning">
+  If you upgrade the package and add new modules in future versions, the
+  type origin for those new modules will be **that upgrade's package id**
+  — not v1, not the original. Verify with `suix_queryEvents` against the
+  candidate type origins.
+</Callout>
+
+## Enforcement strength
+
+| Property | Enforcement |
+|---|---|
+| Revocation | **Compile-time on-chain** — `record_decision` aborts |
+| Expiry | **Compile-time on-chain** — `record_decision` aborts |
+| Oracle allowlist | **Compile-time on-chain** — `record_decision` aborts |
+| Daily spend cap | **Software-policed** — bot reads cap, sums today's events, refuses to overflow |
+
+The cap isn't itself a per-spend accumulator (that would race with concurrent
+edits). Instead, daily spend is computed off-chain by replaying the
+`AgentDecisionMade` event stream for the cap. An auditor can do the same
+calculation independently. We considered an on-chain accumulator and
+intentionally chose the event-stream approach — keeps the cap object
+immutable except for owner-driven edits.
+
+## What this gets the user
+
+- **Non-custodial-ish authorization** — the bot's custodial wallet still
+  signs the mints, but the *authorization* is your main wallet's signature
+  on the cap. Revoking yanks the authorization at the contract level.
+- **Public audit trail** — your wallet can prove what the agent did. The
+  decision log on `/agent` (and any block explorer) shows every action.
+- **Composability** — a future yield product can read your AgentCap to
+  verify the agent's mandate before allocating capital.
+
+## Frontend page
+
+The `/agent` route shows the active cap (id, agent wallet, daily cap,
+expiry), the on-chain decision log (polling every 20s), and a one-tap
+revoke button. Past revoked / expired caps fall into a small history
+section below.
+
+## Related
+
+- [LLM Agent](/agent/llm-agent) — what gets recorded
+- [Telegram Bot](/agent/telegram-bot) — where the bot wallet lives
+- [Deployed Contracts](/reference/contracts) — package versions + chain ids

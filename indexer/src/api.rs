@@ -1,13 +1,13 @@
+use crate::db::DbStore;
 use axum::{
     extract::{Path, State},
     routing::{get, post},
     Json, Router,
 };
+use chrono;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::sync::Arc;
-use chrono;
-use crate::db::DbStore;
 
 use tower_http::cors::{Any, CorsLayer};
 
@@ -51,6 +51,12 @@ pub async fn build_router(db: DbStore, sui_rpc_url: String) -> Router {
         .allow_headers(Any);
 
     Router::new()
+        // Root + /health double as UptimeRobot-pingable endpoints. UR considers
+        // 2xx healthy and 4xx unhealthy, so without these a UR monitor pointed
+        // at the root URL would conclude the service is down and stop keeping
+        // the dyno warm against Render's 15-min idle spin-down.
+        .route("/", get(root))
+        .route("/health", get(root))
         .route("/markets", get(get_markets))
         .route("/markets/:id/orderbook", get(get_orderbook))
         .route("/markets/:id/positions/:address", get(get_positions))
@@ -58,6 +64,20 @@ pub async fn build_router(db: DbStore, sui_rpc_url: String) -> Router {
         .route("/api/compile-market", post(compile_market))
         .with_state(shared_state)
         .layer(cors)
+}
+
+async fn root() -> Json<serde_json::Value> {
+    Json(json!({
+        "service": "deepmarket-indexer",
+        "status": "ok",
+        "endpoints": [
+            "GET  /markets",
+            "GET  /markets/:id/orderbook",
+            "GET  /markets/:id/positions/:address",
+            "GET  /markets/:id/history",
+            "POST /api/compile-market"
+        ]
+    }))
 }
 
 async fn compile_market(Json(payload): Json<CompileRequest>) -> Json<serde_json::Value> {
@@ -70,7 +90,7 @@ async fn compile_market(Json(payload): Json<CompileRequest>) -> Json<serde_json:
         Err(e) => Json(json!({
             "success": false,
             "error": e.to_string()
-        }))
+        })),
     }
 }
 
@@ -89,7 +109,7 @@ async fn get_price_history(
 ) -> Json<serde_json::Value> {
     let history: Vec<PricePoint> = sqlx::query_as(
         "SELECT yes_price, no_price, timestamp FROM price_history
-         WHERE market_id = $1 ORDER BY timestamp ASC"
+         WHERE market_id = $1 ORDER BY timestamp ASC",
     )
     .bind(id as i64)
     .fetch_all(&state.db.pg_pool)
@@ -166,17 +186,13 @@ async fn query_sui_balance(
     });
 
     match client.post(rpc_url).json(&body).send().await {
-        Ok(resp) => {
-            match resp.json::<serde_json::Value>().await {
-                Ok(v) => {
-                    v["result"]["totalBalance"]
-                        .as_str()
-                        .and_then(|s| s.parse::<u64>().ok())
-                        .unwrap_or(0)
-                }
-                Err(_) => 0,
-            }
-        }
+        Ok(resp) => match resp.json::<serde_json::Value>().await {
+            Ok(v) => v["result"]["totalBalance"]
+                .as_str()
+                .and_then(|s| s.parse::<u64>().ok())
+                .unwrap_or(0),
+            Err(_) => 0,
+        },
         Err(_) => 0,
     }
 }

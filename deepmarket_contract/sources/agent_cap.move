@@ -102,10 +102,12 @@ module deepmarket_contract::agent_cap {
 
     // ─── Mint / revoke / update ────────────────────────────────────────
 
-    /// Mint a fresh cap. The cap is transferred to the caller (the user)
-    /// so they own it outright; the agent never holds custody of the
-    /// authorization. To revoke, the user signs a tx that flips
-    /// `revoked` to true.
+    /// Mint a fresh cap. The cap is a **shared object** so the agent
+    /// address can reference it in `record_decision` txs — but every
+    /// mutating path (`revoke`, `update`) asserts `ctx.sender() == owner`,
+    /// so sharing does not weaken access control. The agent never holds
+    /// custody of the authorization; to revoke, the user signs a tx that
+    /// flips `revoked` to true.
     public fun create(
         agent: address,
         daily_spend_cap_usd: u64,
@@ -135,7 +137,7 @@ module deepmarket_contract::agent_cap {
             allowed_oracle_count: cap.allowed_oracles.length(),
             ts_ms: now,
         });
-        transfer::transfer(cap, ctx.sender());
+        transfer::share_object(cap);
     }
 
     public fun revoke(

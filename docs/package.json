@@ -1,0 +1,23 @@
+{
+  "name": "deepmarket-docs",
+  "version": "0.1.0",
+  "description": "DeepMarket documentation — social, agent-augmented prediction trading on Sui",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start"
+  },
+  "dependencies": {
+    "next": "^14.2.15",
+    "nextra": "^3.3.1",
+    "nextra-theme-docs": "^3.3.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@types/react": "^18.3.12",
+    "typescript": "^5.7.2"
+  }
+}

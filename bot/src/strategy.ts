@@ -16,13 +16,16 @@ import {
     snapStrikeUsdToRaw,
     type AgentContext,
 } from './agent.js';
+import { quoteLadder, type StrikeQuote } from './quote.js';
 import {
     appendNote,
     appendTrade,
+    consecutiveLosses,
     exposureLastHourUsd,
     getMemory,
     recentWinRate,
     settleTrade,
+    spentTodayUsd,
 } from './memory.js';
 import { rememberTrade, isMemWalAvailable } from './memwal.js';
 import {
@@ -36,29 +39,32 @@ import {
     type OracleSummary,
     type Position,
 } from './predict.js';
-import { listAll } from './store.js';
+import { listAll, patchSubscription, type Subscription } from './store.js';
 import { mintBinary, redeemBinary } from './trader.js';
 import { getUserBalances } from './user-wallet.js';
+import {
+    findAgentCapForBot,
+    getAgentCapState,
+    isCapUsable,
+    recordDecision,
+    type AgentCapInfo,
+} from './agent-cap.js';
 
 const DUSDC_SCALE = 1_000_000;
 const COVER_USD_MIN = 0.1;
+/**
+ * Hard cooldown: after this many losses in a row the agent is clearly
+ * mispriced on the current regime. Stop minting entirely (still redeem)
+ * until a settled win breaks the streak. This is stronger than the
+ * size-halving cooldown and is what was missing during the 10-loss run.
+ */
+const LOSS_PAUSE_THRESHOLD = 4;
+
+/** chatId → last time we DM'd "daily cap reached" (throttle to ~6h). */
+const dailyCapNotified = new Map<number, number>();
 
 function maxCoverUsd(): number {
     return Math.max(CONFIG.STRATEGY_QTY_USD * 3, 1.5);
-}
-
-/** Rule-based fallback: UP at strike `STRATEGY_BUFFER_TICKS` below spot. */
-function ruleStrike(state: OracleState, oracle: OracleSummary): bigint | null {
-    if (!state.latest_price) return null;
-    const spotRaw = BigInt(Math.floor(state.latest_price.spot));
-    const minStrike = BigInt(oracle.min_strike);
-    const tick = BigInt(oracle.tick_size);
-    const buffer = BigInt(CONFIG.STRATEGY_BUFFER_TICKS);
-    const offset = buffer * tick;
-    if (spotRaw <= minStrike + offset) return null;
-    const target = spotRaw - offset;
-    const idx = (target - minStrike) / tick;
-    return minStrike + idx * tick;
 }
 
 async function pickOracle(): Promise<OracleSummary | null> {
@@ -99,8 +105,24 @@ async function chooseMintBatch(
     chatId: number,
     managerId: string,
     oracle: OracleSummary,
-    state: OracleState
+    state: OracleState,
+    quotes: StrikeQuote[]
 ): Promise<BatchPlan | null> {
+    // No quotable strike → the vault is pricing nothing this tick. There is
+    // literally no in-band trade to make; minting anything would abort.
+    if (quotes.length === 0) {
+        console.log(
+            `[strategy] no quotable strikes for oracle ${oracle.oracle_id.slice(0, 10)} — skipping chat ${chatId}`
+        );
+        return null;
+    }
+    // Quotable-strike index — the deterministic backstop. Even if the model
+    // hallucinates a strike, anything not in here is dropped BEFORE it hits
+    // the chain, so EAskPriceOutOfBounds can no longer happen.
+    const quotableKeys = new Set(
+        quotes.map((q) => `${q.strikeRaw.toString()}:${q.direction}`)
+    );
+
     let openPositions: Position[] = [];
     try {
         openPositions = (await getManagerPositions(managerId)).filter(
@@ -112,6 +134,23 @@ async function chooseMintBatch(
 
     if (isAgentAvailable()) {
         const memory = await getMemory(chatId);
+
+        // Hard cooldown — a long losing streak means the agent is
+        // systematically mispriced on the current regime. Stop minting
+        // entirely until a win breaks the streak; redeeming still runs.
+        const streak = consecutiveLosses(memory);
+        if (streak >= LOSS_PAUSE_THRESHOLD) {
+            console.log(
+                `[strategy] hard cooldown for chat ${chatId}: ${streak} losses in a row — skipping mint`
+            );
+            await appendNote(chatId, {
+                ts: Date.now(),
+                topic: 'risk',
+                text: `Hard cooldown: ${streak} consecutive losses. Minting paused until a settled win breaks the streak. Re-examine whether the edge thesis actually held.`,
+            });
+            return null;
+        }
+
         const ctx: AgentContext = {
             chatId,
             oracle,
@@ -119,6 +158,7 @@ async function chooseMintBatch(
             openPositions,
             memory,
             exposureLastHour: exposureLastHourUsd(memory),
+            quotes,
         };
         const wr = recentWinRate(memory);
         const cooldownActive = wr !== null && wr.rate < 0.4;
@@ -165,6 +205,12 @@ async function chooseMintBatch(
                     continue;
                 }
                 const key = `${snapped.toString()}:${m.direction}`;
+                if (!quotableKeys.has(key)) {
+                    console.warn(
+                        `[strategy] dropping mint — ${m.direction} $${m.strikeUsd} is not a devInspect-quotable strike (would abort on-chain)`
+                    );
+                    continue;
+                }
                 if (seen.has(key)) {
                     console.warn(
                         `[strategy] dropping duplicate mint within batch ${key}`
@@ -219,42 +265,117 @@ async function chooseMintBatch(
         }
     }
 
-    // Rule-based fallback — single UP mint at buffer-ticks-below-spot
-    const strike = ruleStrike(state, oracle);
-    if (strike === null) return null;
-    const dup = openPositions.find(
-        (p) =>
-            p.oracle_id === oracle.oracle_id &&
-            BigInt(p.strike) === strike &&
-            p.is_up === true
+    // No LLM agent configured → DO NOT TRADE.
+    //
+    // The old rule fallback minted "UP near spot" every tick. With real
+    // quotes we can now see why that bleeds: the nearest-spot strike prices
+    // at ~100% implied (cost ≈ payout) — you pay ~$1 to win ~$0. A rule
+    // with no probability model has no edge on ANY strike, so the only
+    // correct move is to pass. Trading resumes automatically once
+    // ANTHROPIC_API_KEY is set and isAgentAvailable() is true.
+    console.warn(
+        `[strategy] no LLM agent configured (ANTHROPIC_API_KEY missing) — ` +
+            `passing for chat ${chatId}. Set the key on the bot service to enable trading.`
     );
-    if (dup) return null;
-    return {
-        mints: [
-            {
-                direction: 'UP',
-                strike,
-                coverUsd: CONFIG.STRATEGY_QTY_USD,
-                rationale: `rule: spot well above strike (buffer ${CONFIG.STRATEGY_BUFFER_TICKS} ticks)`,
-            },
-        ],
-        summaryRationale: `rule loop · single UP mint at buffer ${CONFIG.STRATEGY_BUFFER_TICKS} ticks`,
-    };
+    return null;
 }
 
 function clamp(v: number, lo: number, hi: number): number {
     return Math.max(lo, Math.min(hi, v));
 }
 
+/**
+ * Resolve the user's on-chain AgentCap. Uses the cached `sub.agentCapId`
+ * when present, otherwise auto-discovers it from AgentCapCreated events
+ * keyed by the bot wallet address and caches the result. Returns null
+ * when the user hasn't authorized an agent (cap is opt-in — absence does
+ * not block trading, since funding the custodial wallet already implies
+ * authorization in the current model).
+ */
+async function resolveCap(sub: Subscription): Promise<AgentCapInfo | null> {
+    if (sub.agentCapId) {
+        const state = await getAgentCapState(sub.agentCapId);
+        if (state && state.revoked !== sub.agentCapRevoked) {
+            await patchSubscription(sub.chatId, {
+                agentCapRevoked: state.revoked,
+            });
+        }
+        return state;
+    }
+    if (!sub.botWalletAddr) return null;
+    const discovered = await findAgentCapForBot(sub.botWalletAddr);
+    if (discovered) {
+        await patchSubscription(sub.chatId, {
+            agentCapId: discovered.capId,
+            agentCapRevoked: discovered.revoked,
+        });
+    }
+    return discovered;
+}
+
 async function tryMintForUser(
     bot: Telegraf,
-    chatId: number,
-    managerId: string,
+    sub: Subscription,
     oracle: OracleSummary,
-    state: OracleState
+    state: OracleState,
+    quotes: StrikeQuote[]
 ): Promise<void> {
-    const plan = await chooseMintBatch(chatId, managerId, oracle, state);
+    const chatId = sub.chatId;
+    const managerId = sub.botManagerId;
+    if (!managerId) return;
+
+    // AgentCap gate — if the user authorized an agent cap and then revoked
+    // (or it expired), stop minting for them. Redeeming is still allowed
+    // elsewhere so revocation never traps funds.
+    const cap = await resolveCap(sub);
+    if (cap && !isCapUsable(cap)) {
+        if (!sub.agentCapRevoked) {
+            await patchSubscription(chatId, { agentCapRevoked: true });
+            await bot.telegram
+                .sendMessage(
+                    chatId,
+                    `🛑 *Agent paused* — your on-chain AgentCap is ` +
+                        `${cap.revoked ? 'revoked' : 'expired'}. ` +
+                        `New mints are stopped; existing positions still auto-redeem. ` +
+                        `Re-authorize in the app to resume.`,
+                    { parse_mode: 'Markdown' }
+                )
+                .catch(() => {});
+        }
+        return;
+    }
+
+    const plan = await chooseMintBatch(chatId, managerId, oracle, state, quotes);
     if (!plan) return;
+
+    // ── HARD daily spend cap ───────────────────────────────────────────
+    // Enforced on EVERY mint path here (single choke point). The on-chain
+    // AgentCap's dailySpendCapUsd wins when set (> 0); otherwise the config
+    // fallback applies. UTC-day window — does NOT roll like the hourly cap.
+    const memForCap = await getMemory(chatId);
+    const dailyCapUsd =
+        cap && cap.dailySpendCapUsd > 0
+            ? cap.dailySpendCapUsd
+            : CONFIG.AGENT_MAX_USD_PER_DAY;
+    let dailyRemaining = Math.max(0, dailyCapUsd - spentTodayUsd(memForCap));
+    if (dailyRemaining < COVER_USD_MIN) {
+        const last = dailyCapNotified.get(chatId) ?? 0;
+        if (Date.now() - last > 6 * 60 * 60 * 1000) {
+            dailyCapNotified.set(chatId, Date.now());
+            await bot.telegram
+                .sendMessage(
+                    chatId,
+                    `🛑 *Daily spend cap reached* — $${dailyCapUsd.toFixed(2)}/day. ` +
+                        `No more mints until 00:00 UTC; open positions still auto-redeem.`,
+                    { parse_mode: 'Markdown' }
+                )
+                .catch(() => {});
+        }
+        console.log(
+            `[strategy] daily cap reached for chat ${chatId} ($${dailyCapUsd.toFixed(2)}) — skipping mint`
+        );
+        return;
+    }
 
     const balances = await getUserBalances(chatId).catch(() => ({
         sui: 0,
@@ -280,6 +401,13 @@ async function tryMintForUser(
     let walletRemaining = walletDusdcBase;
 
     for (const attempt of plan.mints) {
+        if (dailyRemaining < COVER_USD_MIN) {
+            failed.push({ attempt, reason: 'daily cap reached' });
+            continue;
+        }
+        // Clamp this mint to whatever daily budget is left, so a 3-mint
+        // batch can't collectively blow past the cap.
+        attempt.coverUsd = Math.min(attempt.coverUsd, dailyRemaining);
         const quantity = BigInt(Math.floor(attempt.coverUsd * DUSDC_SCALE));
         if (walletRemaining < quantity) {
             failed.push({ attempt, reason: 'insufficient dUSDC' });
@@ -295,6 +423,7 @@ async function tryMintForUser(
                 depositAmount: quantity,
             });
             walletRemaining -= quantity;
+            dailyRemaining -= attempt.coverUsd;
             settled.push({ attempt, digest });
 
             await appendTrade(chatId, {
@@ -308,6 +437,22 @@ async function tryMintForUser(
                 costUsd: attempt.coverUsd, // refined on settlement
                 rationale: attempt.rationale,
             });
+
+            // On-chain audit log — emit an AgentDecisionMade event via the
+            // user's AgentCap. Best-effort: a failed record never undoes the
+            // mint that already happened. The Move side aborts if the cap was
+            // revoked mid-tick, so the log stays binding.
+            if (cap) {
+                void recordDecision(chatId, {
+                    capId: cap.capId,
+                    oracleId: oracle.oracle_id,
+                    isMint: true,
+                    directionUp: attempt.direction === 'UP',
+                    strike: Number(attempt.strike),
+                    coverUsd: Math.floor(attempt.coverUsd * DUSDC_SCALE),
+                    rationale: attempt.rationale,
+                });
+            }
         } catch (e) {
             const msg = e instanceof Error ? e.message : String(e);
             failed.push({ attempt, reason: msg.slice(0, 80) });
@@ -507,9 +652,28 @@ export function startStrategyLoop(bot: Telegraf): () => void {
             return;
         }
 
+        // Quote the strike ladder ONCE per oracle per tick (oracle-level,
+        // not user-level) via devInspect, then share it across all users.
+        // This is what makes the agent price-aware and kills out-of-band
+        // aborts. devInspect needs any valid sender — reuse a subscriber's
+        // bot wallet (read-only, touches no sender objects).
+        const senderAddr = subs.find((s) => s.botWalletAddr)?.botWalletAddr;
+        const spotRaw = state.latest_price?.spot ?? 0;
+        let quotes: StrikeQuote[] = [];
+        if (senderAddr && spotRaw > 0) {
+            try {
+                quotes = await quoteLadder(senderAddr, oracle, spotRaw);
+            } catch (e) {
+                console.warn('[strategy] quoteLadder failed:', e);
+            }
+        }
+        console.log(
+            `[strategy] oracle ${oracle.oracle_id.slice(0, 10)} — ${quotes.length} quotable strikes`
+        );
+
         for (const sub of subs) {
             if (!sub.botManagerId) continue;
-            await tryMintForUser(bot, sub.chatId, sub.botManagerId, oracle, state);
+            await tryMintForUser(bot, sub, oracle, state, quotes);
         }
     };
 

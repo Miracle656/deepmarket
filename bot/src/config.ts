@@ -10,25 +10,37 @@ function required(name: string): string {
     return v;
 }
 
+/**
+ * Env var with default — treats empty string AND whitespace-only AS missing.
+ * Plain `??` only catches null/undefined, so Render env vars typo'd as
+ * `SUI_RPC_URL=` (empty value) would pass through as "" and fail fetch URL
+ * parsing downstream. This guards against that class of failure.
+ */
+function envOr(name: string, fallback: string): string {
+    const v = process.env[name]?.trim();
+    return v && v.length > 0 ? v : fallback;
+}
+
 export const CONFIG = {
     BOT_TOKEN: required('BOT_TOKEN'),
-    INDEXER_URL: process.env.INDEXER_URL ?? 'http://localhost:3000',
-    PREDICT_SERVER_URL:
-        process.env.PREDICT_SERVER_URL ??
-        'https://predict-server.testnet.mystenlabs.com',
-    PREDICT_OBJECT_ID:
-        process.env.PREDICT_OBJECT_ID ??
-        '0xc8736204d12f0a7277c86388a68bf8a194b0a14c5538ad13f22cbd8e2a38028a',
-    WEB_URL: process.env.WEB_URL ?? 'http://localhost:5174',
+    INDEXER_URL: envOr('INDEXER_URL', 'http://localhost:3000'),
+    PREDICT_SERVER_URL: envOr(
+        'PREDICT_SERVER_URL',
+        'https://predict-server.testnet.mystenlabs.com'
+    ),
+    PREDICT_OBJECT_ID: envOr(
+        'PREDICT_OBJECT_ID',
+        '0xc8736204d12f0a7277c86388a68bf8a194b0a14c5538ad13f22cbd8e2a38028a'
+    ),
+    WEB_URL: envOr('WEB_URL', 'http://localhost:5174'),
     POLL_MS: Number(process.env.POLL_MS ?? 30000),
-    STORE_PATH: process.env.STORE_PATH ?? './subs.json',
+    STORE_PATH: envOr('STORE_PATH', './subs.json'),
 
     // ── Bot trader ─────────────────────────────────────────────────
-    BOT_SUI_PRIVATE_KEY: process.env.BOT_SUI_PRIVATE_KEY ?? '',
-    BOT_STATE_PATH: process.env.BOT_STATE_PATH ?? './bot-state.json',
-    SUI_RPC_URL:
-        process.env.SUI_RPC_URL ?? 'https://fullnode.testnet.sui.io:443',
-    STRATEGY_ENABLED: (process.env.STRATEGY_ENABLED ?? 'false') === 'true',
+    // Each Telegram chat owns its own custodial keypair (stored in subs.json
+    // via user-wallet.ts) — there is no global bot wallet. Strategy enabling
+    // is per-chat via the inline "▶️ Start strategy" button, not an env var.
+    SUI_RPC_URL: envOr('SUI_RPC_URL', 'https://fullnode.testnet.sui.io:443'),
     STRATEGY_BUFFER_TICKS: Number(process.env.STRATEGY_BUFFER_TICKS ?? 3),
     STRATEGY_QTY_USD: Number(process.env.STRATEGY_QTY_USD ?? 0.5),
     STRATEGY_TICK_MS: Number(process.env.STRATEGY_TICK_MS ?? 60000),
@@ -48,6 +60,13 @@ export const CONFIG = {
     AGENT_MODEL: process.env.AGENT_MODEL ?? 'claude-opus-4-7',
     /** Soft cap — agent stops minting after this many USD of new exposure per user per hour. */
     AGENT_MAX_USD_PER_HOUR: Number(process.env.AGENT_MAX_USD_PER_HOUR ?? 5),
+    /**
+     * HARD cap — total USD of cover a user's agent may mint per UTC day,
+     * across EVERY path (LLM + fallback). Fallback when the on-chain
+     * AgentCap has no dailySpendCapUsd set. The AgentCap value, when > 0,
+     * always overrides this.
+     */
+    AGENT_MAX_USD_PER_DAY: Number(process.env.AGENT_MAX_USD_PER_DAY ?? 3),
     AGENT_MEMORY_PATH: process.env.AGENT_MEMORY_PATH ?? './agent-memory.json',
 
     // ── MemWal (Walrus-backed semantic memory) ────────────────────
@@ -62,6 +81,15 @@ export const CONFIG = {
     MEMWAL_NAMESPACE: process.env.MEMWAL_NAMESPACE ?? 'deepmarket-bot',
     /** How many recalled memories to inject into the agent prompt. */
     MEMWAL_RECALL_LIMIT: Number(process.env.MEMWAL_RECALL_LIMIT ?? 5),
+
+    // ── AgentCap (on-chain policy object + audit log) ─────────────
+    // deepmarket_contract v3 — the package holding the agent_cap module.
+    // The bot calls agent_cap::record_decision after each mint so every
+    // decision lands an AgentDecisionMade event on-chain. If a user's cap
+    // is revoked on-chain, the strategy loop stops trading for them.
+    AGENT_CAP_PACKAGE_ID:
+        process.env.AGENT_CAP_PACKAGE_ID ??
+        '0x50a58add3954967d6c6480469b9fa78f3f7bb21fed9cda88323cdf7a87771c29',
 
     // Move package constants — must match the deployed Predict instance
     PREDICT_PACKAGE_ID:

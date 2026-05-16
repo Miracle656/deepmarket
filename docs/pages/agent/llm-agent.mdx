@@ -1,0 +1,152 @@
+import { Callout, Steps } from 'nextra/components'
+
+# LLM Agent
+
+The DeepMarket bot's trading decisions are made by **Claude** (Opus 4.7) via
+the Anthropic SDK. Each strategy tick (every 60s), the agent reads the
+current oracle state, the user's open positions, structured stats, and
+semantically recalled past trades — then returns 1-3 mints with rationale,
+or passes.
+
+Source: `bot/src/agent.ts`.
+
+## Why an LLM, not just rules
+
+The rule-based loop (still available as a fallback) mints **UP every tick**
+at `spot − N ticks`. It's autonomous but stupid — it doesn't read the book,
+doesn't size by conviction, doesn't pass when the picture is unclear.
+
+The LLM:
+
+- **Picks a direction** (UP/DOWN) per oracle setup
+- **Picks a strike** on the grid
+- **Sizes** the cover by conviction
+- **Hedges or ladders** with up to 3 distinct mints per tick
+- **Passes** when uncertain
+- **Writes a rationale** for every decision (shown in your Telegram DM)
+- **Leaves notes to itself** that surface in future decisions
+
+## Tool-use schema
+
+The agent doesn't return free text — it calls a `submit_decision` tool whose
+input schema enforces structured output:
+
+```ts
+{
+  action: "mint" | "pass",
+  mints?: Array<{
+    direction: "UP" | "DOWN",
+    strike_usd: number,
+    cover_usd: number,
+    rationale: string,
+  }>,  // 1-3 items when action=mint
+  summary_rationale: string,
+  note_for_self?: string,
+}
+```
+
+That means the bot can `JSON.parse` the agent's decision with zero
+brittleness — no regex on free-form output.
+
+## Decision context
+
+Every tick, the agent receives a structured prompt with:
+
+- **Current oracle** — id, label, status, spot, min_strike, tick_size, minutes
+  to expiry
+- **Risk budget** — `default_cover_usd`, `exposure_last_hour_usd`,
+  `exposure_cap_usd_per_hour`, `remaining_budget_usd`
+- **Open positions** — direction / strike / qty for everything on this manager
+- **Memory summary** — total / settled / wins / losses / net P&L, plus
+  by-oracle aggregates
+- **Recent trades** — last 8 with their outcomes
+- **Recent notes** — last 6 freeform notes the agent left itself
+- **Semantic recall** — top-K MemWal hits from past similar setups
+  (see [MemWal](/agent/memwal))
+
+## Three patterns the system prompt teaches
+
+1. **Hedge** — one UP + one DOWN at different strikes. Captures volatility
+   in either direction.
+2. **Ladder** — 2-3 same-direction mints at adjacent strikes. Scales into
+   conviction.
+3. **Spread** — one ATM + one OTM. Different risk/reward profiles.
+
+The prompt explicitly tells the agent that *passing is preferred when the
+picture is unclear* — quality over quantity.
+
+## Win-rate circuit breaker (anti-Martingale)
+
+A real risk: after losses, naive systems "double down to recover." That's
+the gambler's fallacy and guarantees ruin. DeepMarket does the **opposite**:
+
+- `recentWinRate(memory)` reads the last 10 settled trades (min 5 samples).
+- When win-rate **< 40%**:
+  - Prompt tells the agent **"cooldown active — halve sizes, be more
+    selective"**
+  - `strategy.ts` halves every cover size **server-side** as a backstop
+- When win-rate **≥ 70%**: prompt says **"do not chase the streak"**
+
+Belt-and-suspenders. The agent can't override the cap even if its prompt
+adherence slips.
+
+<Callout type="info">
+  **Lose more → bet less.** This is the inverse of Martingale, and it's what
+  every professional risk system enforces.
+</Callout>
+
+## Batched mints — up to 3 per tick
+
+The original loop minted one position per tick. The agent submits a **batch
+of 1-3 mints** per call so it can diversify in a single decision:
+
+```
+🧠 Agent batch — 3 mints
+↑ UP @ $80500  cover $0.30 · "captures continuation"
+↓ DOWN @ $80700 cover $0.20 · "hedge if it rejects"
+↑ UP @ $80400  cover $0.40 · "main conviction, deeper OTM"
+
+Spot: $80580 · Expires 12:45 PM
+"Laddered around spot — biased UP, with a small DOWN hedge for tail risk"
+```
+
+`strategy.ts:chooseMintBatch` validates each mint, snaps strikes to the
+on-chain grid, dedupes against open positions, and clamps the total cover
+to the remaining hourly budget + wallet balance.
+
+## Failure modes — graceful
+
+- **`ANTHROPIC_API_KEY` not set** — the agent is disabled, the strategy loop
+  uses the rule fallback. No error, just `📐 rule` in the menu instead of
+  `🧠 Claude`.
+- **API call throws** — bot logs, returns null, treats as "pass". The user
+  isn't DM'd about transient API failures.
+- **Invalid tool output** — bot logs, returns null, falls back to pass.
+- **All planned mints fail validation** — silent pass, no DM (avoids
+  spamming on tick-after-tick failures).
+
+## Configuration
+
+```
+ANTHROPIC_API_KEY=sk-ant-...
+AGENT_ENABLED=true                # master switch
+AGENT_MODEL=claude-opus-4-7
+AGENT_MAX_USD_PER_HOUR=5          # soft hourly exposure cap
+AGENT_MEMORY_PATH=./agent-memory.json
+```
+
+## What the user sees
+
+Each successful batch turns into a single Telegram DM with:
+
+- Header (`🧠 Agent batch — N mints` or `🧠 Agent mint` for a single)
+- One line per mint with direction, strike, cover, and per-mint rationale
+- Failed-mint reasons if any
+- Spot, expiry time, overall thesis (`summary_rationale`)
+- First tx digest
+
+## Related
+
+- [Telegram Bot](/agent/telegram-bot) — the surface that hosts the agent
+- [MemWal Memory](/agent/memwal) — semantic recall feeding the prompt
+- [AgentCap](/agent/agent-cap) — on-chain authorization

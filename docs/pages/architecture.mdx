@@ -1,0 +1,118 @@
+import { Callout } from 'nextra/components'
+
+# Architecture
+
+DeepMarket is a layered stack. Reading bottom-up: settlement on Sui, two
+market backends, a web app, and an agent layer on top.
+
+## The layer stack
+
+| Layer | What it is |
+|---|---|
+| **L01 — Sui + DeepBook V3** | Settlement + CLOB matching. Every order, mint, redeem, and message resolves on Sui. |
+| **L02 — Spot YES/NO + DeepBook Predict** | Two market backends: permissionless outcome tokens on the V3 CLOB, plus vol-surface-priced BTC binaries on DeepBook Predict. |
+| **L03 — Encrypted per-market chat** | Sui Stack Messaging + Walrus storage + Seal encryption. Each market gets an end-to-end-encrypted room. |
+| **L04 — DeepMarket web app** | React frontend: trading surface, multi-manager portfolio, charts, range positions, and the agent authorization page. |
+| **L05 — Telegram agent · autonomous trader** | Per-user custodial wallets, an LLM decision loop, Walrus-backed memory, and on-chain AgentCap authorization. |
+
+## Components
+
+### Move contracts — `deepmarket_contract/`
+
+DeepMarket's own Move package (Sui Move 2024). Modules:
+
+- `market_factory` — creates Spot YES/NO markets, mints outcome tokens,
+  handles resolution and redemption.
+- `yes_token` / `no_token` — the outcome token types.
+- `agent_cap` — the on-chain agent policy object + audit log
+  (see [AgentCap](/agent/agent-cap)).
+
+The package is **upgradeable** — `agent_cap` was added in a later upgrade
+without touching existing markets.
+
+### Frontend — `deepmarket/`
+
+React + Vite + `@mysten/dapp-kit`. Routes:
+
+- `/markets` — Spot market browser + create modal
+- `/markets/:id` — market detail with a Chart / Chat tab strip
+- `/predict` — DeepBook Predict oracle list
+- `/predict/:oracleId` — strike grid, mint sidebar, spot chart
+- `/portfolio` — multi-manager Predict + Spot positions
+- `/agent` — AgentCap authorization page + on-chain decision log
+
+### Indexer — `indexer/`
+
+Rust + Axum, port 3000. Polls Sui for `market_factory` events, deduplicates,
+and serves a REST API backed by PostgreSQL + Redis. **Spot markets only** —
+Predict pulls from Mysten's public server.
+
+### Telegram bot — `bot/`
+
+Node + TypeScript + Telegraf. Per-chat custodial wallets, a 60-second
+strategy tick, the LLM agent, MemWal memory, and AgentCap integration.
+See [The Agent](/agent/telegram-bot).
+
+## Data flow
+
+### Spot YES/NO
+
+```
+User → Frontend → market_factory (Move) → DeepBook V3 CLOB
+                                        ↓ emits events
+                          Rust indexer → Postgres + Redis → REST API → Frontend
+```
+
+### DeepBook Predict
+
+```
+User → Frontend → DeepBook Predict (Mysten testnet package)
+                                  ↓
+       predict-server.testnet.mystenlabs.com (oracles, SVI, positions)
+                                  ↓
+                              Frontend
+```
+
+The frontend never talks to a DeepMarket-run backend for Predict — it reads
+the public Predict server and writes directly to the Predict Move package.
+
+### The agent loop
+
+```
+Strategy tick (60s)
+  → gather oracle state + open positions + memory
+  → MemWal semantic recall
+  → Claude decides (mint / pass, with rationale)
+  → check AgentCap (revoked? expired?)
+  → mint on Sui  → record_decision (on-chain audit event)
+  → on settlement: redeem + write outcome to memory + MemWal
+```
+
+## Cross-cutting: identity
+
+Three wallet contexts coexist:
+
+1. **Main wallet** — the user's daily-driver, connected in the browser. Owns
+   their personal Spot positions and Predict manager, and signs `AgentCap`
+   creation / revocation.
+2. **Custodial bot wallet** — generated per Telegram chat, key held by the
+   bot. This is the `agent` address — it signs the bot's trades.
+3. **Chat delegate keypair** — an Ed25519 key per wallet, stored in
+   localStorage, that auto-signs encrypted chat messages without a popup per
+   message.
+
+<Callout type="info">
+  The AgentCap model exists precisely to separate (1) and (2): your main
+  wallet authorizes the custodial bot wallet to trade, within limits, without
+  the bot ever holding your main key.
+</Callout>
+
+## Tech stack summary
+
+- **Move 2024** — Sui smart contracts
+- **React + Vite + dapp-kit** — frontend
+- **Rust + Axum + Postgres + Redis** — indexer
+- **Node + TypeScript + Telegraf** — Telegram bot
+- **Anthropic Claude** — the LLM agent
+- **Walrus + Seal** — encrypted storage (chat + agent memory)
+- **Nextra** — this documentation site

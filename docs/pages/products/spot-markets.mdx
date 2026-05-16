@@ -1,0 +1,93 @@
+import { Callout, Steps } from 'nextra/components'
+
+# Spot YES/NO Markets
+
+Permissionless prediction markets on a real central limit order book.
+Anyone can create a question; YES and NO outcome tokens trade against each
+other on **DeepBook V3**, and prices reflect the implied probability.
+
+## How it works
+
+Every market has:
+
+- A **question** — "Will X happen by Y?"
+- A **resolution time** — when the market settles
+- A **quote asset** — SUI on testnet (USDC on mainnet later)
+- A **vault** — SUI deposited to mint outcome tokens, paid out 1:1 to winners
+- A **YES pool** and a **NO pool** on DeepBook V3 — outcome-token vs. quote
+
+## Trading flow
+
+<Steps>
+
+### Mint outcome tokens
+
+Deposit `X` SUI into the market's vault and receive `X` YES + `X` NO. The
+two together always equal one unit of SUI — that's the no-arbitrage invariant.
+
+### Trade YES or NO
+
+Use DeepBook V3 to swap one side for the other. If you think YES is
+underpriced, sell your NO for more YES (or buy YES directly with SUI). Prices
+in cents (`¢`) reflect implied probability — `73¢` means "the market thinks
+this is 73% likely."
+
+### Wait for resolution
+
+At resolution time, the market resolver calls `resolve_market(outcome: bool)`.
+The vault is now redeemable by the winning side only.
+
+### Redeem the winner
+
+If YES wins, every `1 YES` redeems for `1 SUI` (and `NO` is worth zero).
+If NO wins, vice versa. The losing side is burned.
+
+</Steps>
+
+## Composability with DeepBook V3
+
+Each market registers two DeepBook V3 pools — `YES/QUOTE` and `NO/QUOTE`.
+That means:
+
+- Order types from V3 are inherited (limit, market, GTC, etc.)
+- Liquidity is on a real CLOB, not an AMM curve
+- Anything that integrates DeepBook (margin, lending, bots) can compose
+  outcome tokens automatically
+
+## skip-pools mode
+
+For test markets where DEEP token cost matters, the contract supports
+**skip-pools** — markets are minted without registering V3 pools. Tokens
+can still be minted/redeemed but not order-book traded. Production markets
+create pools normally.
+
+## Per-market chat
+
+Every spot market has an **encrypted chat room** attached. The Chart / Chat
+tab strip on the market detail page switches between price view and the
+end-to-end-encrypted room for that market. See
+[Encrypted Market Chat](/products/chat).
+
+## Indexer
+
+The Rust + Axum indexer (`indexer/`, port 3000) polls Sui for
+`market_factory` events, deduplicates them, and serves a REST API the
+frontend uses for the markets list, fills, and volume.
+
+<Callout type="info">
+  The indexer is only required for Spot markets. DeepBook Predict reads from
+  Mysten's public Predict server.
+</Callout>
+
+## Try it
+
+- Browse / create at `/markets`
+- Resolve from the Portfolio if you're the admin
+- Track via Telegram alerts — set up a chat with the bot and you get
+  resolution + price-move DMs (see [Telegram Bot](/agent/telegram-bot))
+
+## Related
+
+- [DeepBook Predict](/products/deepbook-predict) — the other backend
+- [Encrypted Market Chat](/products/chat) — the social layer
+- [Deployed Contracts](/reference/contracts) — package and registry ids
