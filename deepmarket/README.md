@@ -1,73 +1,69 @@
-# React + TypeScript + Vite
+# DeepMarket — Web App & TypeScript SDK
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+The React front end for [DeepMarket](../README.md), plus the in-repo
+TypeScript SDK (`src/sdk/`) that builds the Sui programmable transactions
+the app submits.
 
-Currently, two official plugins are available:
+## Stack
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- **React 18 + Vite + TypeScript**
+- **`@mysten/dapp-kit`** — wallet connect, signing, RPC
+- **`@mysten/deepbook-v3`** — DeepBook V3 CLOB interactions
+- **Sui Stack Messaging SDK** — encrypted per-market chat (via the relayer)
+- **lightweight-charts**, Framer Motion / GSAP — price charts + landing visuals
 
-## React Compiler
+## What's in the app
 
-The React Compiler is currently not compatible with SWC. See [this issue](https://github.com/vitejs/vite-plugin-react/issues/428) for tracking the progress.
+| Route | Purpose |
+|---|---|
+| `/` | Landing page |
+| Markets | Create `YES`/`NO` outcome markets, mint outcome tokens, trade on DeepBook V3, resolve & redeem |
+| Predict | DeepBook Predict — mint/redeem **binary (UP/DOWN)** and **range** options on the BTC oracle, with live devInspect price preview |
+| Portfolio | Open/settled positions across markets + Predict managers |
+| Agent | Authorize / revoke the on-chain `AgentCap` that lets the Telegram bot trade Predict on your behalf, with a daily spend cap |
+| Market chat | Sui Stack Messaging group per market (delegate key auto-provisioned) |
 
-## Expanding the ESLint configuration
+## Develop
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm install
+cp .env.example .env     # fill in / keep the testnet defaults
+npm run dev              # http://localhost:5173 (strictPort)
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+## Scripts
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+| Command | Does |
+|---|---|
+| `npm run dev` | Vite dev server on :5173 |
+| `npm run build` | `tsc -b && vite build` — typecheck + production bundle |
+| `npm run lint` | ESLint |
+| `npm run preview` | Serve the built bundle |
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+> Typecheck the project with `npx tsc -b` (the root `tsconfig.json` is
+> references-only — `--noEmit` against it does nothing).
+
+## Environment
+
+All config is `VITE_*` (see `.env.example`). Highlights:
+
+- `VITE_PACKAGE_ID` — DeepMarket Move package (v3 `0x50a58add…`)
+- `VITE_MARKET_REGISTRY` — shared `MarketRegistry`
+- `VITE_DEEPBOOK_PACKAGE_ID` / `VITE_DEEPBOOK_REGISTRY_ID` — DeepBook V3 (testnet)
+- `VITE_NETWORK` — `testnet`
+- `VITE_INDEXER_URL` — indexer REST API (`http://localhost:3000` locally, the Render URL in prod)
+- `VITE_RELAYER_URL` — Sui Stack Messaging relayer (`:3001` locally)
+
+## Layout
+
 ```
+src/
+  components/   pages + modals (Markets, Predict, Portfolio, Agent, MarketChat, Landing)
+  lib/          config, predict + predict-tx, agent-cap, messaging, useMarkets, api
+  sdk/          PredictionMarketClient — account / execution / strategy / resolution
+  assets/       brand art
+```
+
+The SDK (`src/sdk/`) is the place to start for the create → mint → trade →
+resolve → redeem flow; see the protocol [README](../deepmarket_contract/README.md)
+for the matching on-chain functions.
