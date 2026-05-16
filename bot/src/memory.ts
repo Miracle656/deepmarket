@@ -251,6 +251,23 @@ export function exposureLastHourUsd(mem: UserMemory): number {
 }
 
 /**
+ * USD of cover minted since 00:00 UTC today. This is the input to the
+ * HARD daily spend cap — unlike the hourly window it does not roll, so
+ * once the day's budget is spent the bot stops minting until UTC midnight.
+ */
+export function spentTodayUsd(mem: UserMemory): number {
+    const now = new Date();
+    const startOfDayUtc = Date.UTC(
+        now.getUTCFullYear(),
+        now.getUTCMonth(),
+        now.getUTCDate()
+    );
+    return mem.trades
+        .filter((t) => t.ts >= startOfDayUtc)
+        .reduce((sum, t) => sum + t.coverUsd, 0);
+}
+
+/**
  * Rolling win-rate over the last N settled trades. Returns null when
  * we don't have enough data to draw a conclusion (avoid acting on a
  * single bad trade). This is the input to the "cooldown" circuit

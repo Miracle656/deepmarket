@@ -25,6 +25,7 @@ import {
     getMemory,
     recentWinRate,
     settleTrade,
+    spentTodayUsd,
 } from './memory.js';
 import { rememberTrade, isMemWalAvailable } from './memwal.js';
 import {
@@ -58,6 +59,9 @@ const COVER_USD_MIN = 0.1;
  * size-halving cooldown and is what was missing during the 10-loss run.
  */
 const LOSS_PAUSE_THRESHOLD = 4;
+
+/** chatId → last time we DM'd "daily cap reached" (throttle to ~6h). */
+const dailyCapNotified = new Map<number, number>();
 
 function maxCoverUsd(): number {
     return Math.max(CONFIG.STRATEGY_QTY_USD * 3, 1.5);
@@ -344,6 +348,35 @@ async function tryMintForUser(
     const plan = await chooseMintBatch(chatId, managerId, oracle, state, quotes);
     if (!plan) return;
 
+    // ── HARD daily spend cap ───────────────────────────────────────────
+    // Enforced on EVERY mint path here (single choke point). The on-chain
+    // AgentCap's dailySpendCapUsd wins when set (> 0); otherwise the config
+    // fallback applies. UTC-day window — does NOT roll like the hourly cap.
+    const memForCap = await getMemory(chatId);
+    const dailyCapUsd =
+        cap && cap.dailySpendCapUsd > 0
+            ? cap.dailySpendCapUsd
+            : CONFIG.AGENT_MAX_USD_PER_DAY;
+    let dailyRemaining = Math.max(0, dailyCapUsd - spentTodayUsd(memForCap));
+    if (dailyRemaining < COVER_USD_MIN) {
+        const last = dailyCapNotified.get(chatId) ?? 0;
+        if (Date.now() - last > 6 * 60 * 60 * 1000) {
+            dailyCapNotified.set(chatId, Date.now());
+            await bot.telegram
+                .sendMessage(
+                    chatId,
+                    `🛑 *Daily spend cap reached* — $${dailyCapUsd.toFixed(2)}/day. ` +
+                        `No more mints until 00:00 UTC; open positions still auto-redeem.`,
+                    { parse_mode: 'Markdown' }
+                )
+                .catch(() => {});
+        }
+        console.log(
+            `[strategy] daily cap reached for chat ${chatId} ($${dailyCapUsd.toFixed(2)}) — skipping mint`
+        );
+        return;
+    }
+
     const balances = await getUserBalances(chatId).catch(() => ({
         sui: 0,
         dusdc: 0,
@@ -368,6 +401,13 @@ async function tryMintForUser(
     let walletRemaining = walletDusdcBase;
 
     for (const attempt of plan.mints) {
+        if (dailyRemaining < COVER_USD_MIN) {
+            failed.push({ attempt, reason: 'daily cap reached' });
+            continue;
+        }
+        // Clamp this mint to whatever daily budget is left, so a 3-mint
+        // batch can't collectively blow past the cap.
+        attempt.coverUsd = Math.min(attempt.coverUsd, dailyRemaining);
         const quantity = BigInt(Math.floor(attempt.coverUsd * DUSDC_SCALE));
         if (walletRemaining < quantity) {
             failed.push({ attempt, reason: 'insufficient dUSDC' });
@@ -383,6 +423,7 @@ async function tryMintForUser(
                 depositAmount: quantity,
             });
             walletRemaining -= quantity;
+            dailyRemaining -= attempt.coverUsd;
             settled.push({ attempt, digest });
 
             await appendTrade(chatId, {

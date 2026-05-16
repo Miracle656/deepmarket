@@ -60,6 +60,13 @@ export const CONFIG = {
     AGENT_MODEL: process.env.AGENT_MODEL ?? 'claude-opus-4-7',
     /** Soft cap — agent stops minting after this many USD of new exposure per user per hour. */
     AGENT_MAX_USD_PER_HOUR: Number(process.env.AGENT_MAX_USD_PER_HOUR ?? 5),
+    /**
+     * HARD cap — total USD of cover a user's agent may mint per UTC day,
+     * across EVERY path (LLM + fallback). Fallback when the on-chain
+     * AgentCap has no dailySpendCapUsd set. The AgentCap value, when > 0,
+     * always overrides this.
+     */
+    AGENT_MAX_USD_PER_DAY: Number(process.env.AGENT_MAX_USD_PER_DAY ?? 3),
     AGENT_MEMORY_PATH: process.env.AGENT_MEMORY_PATH ?? './agent-memory.json',
 
     // ── MemWal (Walrus-backed semantic memory) ────────────────────
