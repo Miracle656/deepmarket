@@ -25,6 +25,10 @@ import {
 import type { UserMemory } from './memory.js';
 import { summarizeMemory, exposureLastHourUsd, recentWinRate } from './memory.js';
 import { recallRelevant, isMemWalAvailable } from './memwal.js';
+import { formatQuoteLine, type StrikeQuote } from './quote.js';
+
+/** Minimum edge (agent prob − implied prob) required to justify a mint. */
+export const EDGE_THRESHOLD = 0.08;
 
 // ── Types ────────────────────────────────────────────────────────────────
 
@@ -38,6 +42,13 @@ export interface AgentContext {
     memory: UserMemory;
     /** How much USD this user has already locked into mints in the last hour. */
     exposureLastHour: number;
+    /**
+     * devInspect-verified strike quotes for THIS oracle this tick. Every
+     * entry is guaranteed quotable (will not abort) and carries the real
+     * cost + market-implied probability. The agent must only mint strikes
+     * that appear here.
+     */
+    quotes: StrikeQuote[];
 }
 
 export interface AgentMint {
@@ -84,34 +95,39 @@ oracle state, the user's open positions, and a memory of your past trades on \
 this account. You either submit 1-3 MINTS (laddered across strikes/directions) \
 or PASS for this tick.
 
-Trade philosophy:
-  - Bias toward PASSING when the picture is unclear. One good tick is worth ten mediocre ones.
-  - When you do trade, consider opening MULTIPLE positions to diversify:
-      * Hedge: one UP + one DOWN at different strikes (captures volatility in either direction)
-      * Ladder: 2-3 same-direction mints at adjacent strikes (scales into conviction)
-      * Spread: one near-spot ATM mint + one OTM mint (different risk/reward profiles)
-    Submit up to 3 mints in a single decision — each one must have a distinct (strike, direction) tuple.
-  - Prefer modest cover sizes — when minting 3, keep each one small (e.g. 0.3-0.5 USD) so total exposure stays sane.
-  - Avoid opening a position at the same (strike, direction) as one already open.
-  - The SUM of cover_usd across all your mints must stay within remaining_budget_usd.
-  - Strikes must be on the grid: strike = min_strike + k * tick_size for some integer k >= 0. \
-    Round to the nearest grid value when picking.
-  - UP wins if final spot > strike. DOWN wins if final spot <= strike.
-  - The closer strike is to spot, the more expensive but the higher the win odds.
+HOW YOU MAKE MONEY (read this twice):
+  Each quotable strike comes with a market-implied probability = cost / payout.
+  That price already bakes in the vault's spread. Direction-guessing BTC over
+  one hour is ~50/50 — if you mint at the implied odds you LOSE the spread
+  every time. That is exactly why a naive "hug spot" strategy bleeds out.
+  You only have edge when YOUR estimated probability of an outcome exceeds
+  the implied probability by a clear margin.
 
-CRITICAL — strike distance from spot:
-  - The vault only quotes prices inside a narrow band around spot ("ask bounds").
-    Strikes outside this band ABORT with EAskPriceOutOfBounds and waste a tx.
-  - The band widens with time-to-expiry, but it is NEVER as wide as you might think.
-    Rough guide:
-      * < 15 min to expiry  →  stay within ~0.3% of spot
-      * 15-60 min to expiry →  stay within ~0.6% of spot
-      * 1-4 hours           →  stay within ~1.0% of spot
-      * 4+ hours            →  stay within ~1.5% of spot
-  - "Wide strangle" plays (UP and DOWN both well OUT of the money) are appealing in theory
-    but will be REJECTED by the vault — DO NOT submit them. Strangles only work when each
-    leg is inside the band.
-  - When in doubt, hug spot. A near-ATM bet is far better than an OUT-of-band bet that aborts.
+  EV rule (non-negotiable):
+    - For each candidate leg, estimate p = your probability it settles in the money.
+    - Only mint if  p − implied_prob ≥ ${EDGE_THRESHOLD.toFixed(2)}  (8 percentage points of edge).
+    - If nothing clears that bar, action = pass. Passing is the correct move
+      most ticks. One genuine edge beats ten coin-flips.
+    - State the implied prob and your p in each mint's rationale.
+
+  Where edge actually comes from (be honest — if none apply, PASS):
+    - A recent decisive spot move/momentum the vault's implied prob hasn't caught up to.
+    - Your memory/notes showing a repeatable pattern on this oracle label.
+    - A clearly mispriced far strike (cheap lottery) where implied << your read.
+    Do NOT invent conviction. "BTC feels like it'll go up" is not edge.
+
+Trade mechanics:
+  - You may ONLY mint (strike, direction) pairs that appear in the
+    "Quotable strikes" table below. Every other strike will abort on-chain
+    and waste the user's gas. Do not round, extrapolate, or invent strikes.
+  - Submit 1-3 mints, each a distinct (strike, direction) from the table.
+    Multiple mints are for genuine diversification, not for spraying.
+  - Prefer modest cover — when minting more than one, keep each small
+    (≈0.3-0.5 USD) so total exposure stays sane.
+  - Do not double up on a (strike, direction) already in open positions.
+  - The SUM of cover_usd across all mints must stay within remaining_budget_usd.
+  - UP wins if final spot > strike. DOWN wins if final spot <= strike.
+  - Bias hard toward PASS when the picture is unclear or no leg clears the edge bar.
 
 You will respond by calling the submit_decision tool exactly once. Never reply with prose.`;
 
@@ -139,6 +155,27 @@ function buildUserPrompt(
     lines.push(`min_strike_usd: ${minStrikeUsd.toFixed(2)}`);
     lines.push(`tick_size_usd: ${tickUsd.toFixed(2)}`);
     lines.push(`minutes_to_expiry: ${minutesToExpiry}`);
+    lines.push('');
+
+    lines.push(
+        `# Quotable strikes (devInspect-verified — these WILL mint, nothing else will)`
+    );
+    if (ctx.quotes.length === 0) {
+        lines.push(
+            '(none quotable right now — the vault is not pricing any strike. ' +
+                'You MUST action=pass this tick.)'
+        );
+    } else {
+        lines.push(
+            `Each line: direction, strike, per-unit cost, per-unit payout, implied probability.`
+        );
+        lines.push(
+            `Mint ONLY a (direction, strike) pair listed here. implied% = the bar your own estimate must beat by ≥${(EDGE_THRESHOLD * 100).toFixed(0)}pts.`
+        );
+        for (const q of ctx.quotes) {
+            lines.push(`- ${formatQuoteLine(q)}`);
+        }
+    }
     lines.push('');
 
     lines.push(`# Risk budget`);
@@ -239,9 +276,10 @@ function buildUserPrompt(
     }
 
     lines.push(
-        `Decide whether to mint a new binary position on this oracle, or pass. ` +
-            `Call submit_decision once. If you mint, pick a strike on the grid that ` +
-            `aligns with your conviction — closer-to-spot = higher win odds + higher cost.`
+        `Decide. Call submit_decision once. For any mint: pick a (direction, strike) ` +
+            `straight from the Quotable strikes table, estimate your probability p, and ` +
+            `only include it if p − implied ≥ ${EDGE_THRESHOLD.toFixed(2)}. If no leg clears that, action=pass. ` +
+            `Put "p=NN% vs implied MM%" in each mint's rationale.`
     );
 
     return lines.join('\n');

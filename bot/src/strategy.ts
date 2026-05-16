@@ -16,9 +16,11 @@ import {
     snapStrikeUsdToRaw,
     type AgentContext,
 } from './agent.js';
+import { quoteLadder, type StrikeQuote } from './quote.js';
 import {
     appendNote,
     appendTrade,
+    consecutiveLosses,
     exposureLastHourUsd,
     getMemory,
     recentWinRate,
@@ -49,23 +51,16 @@ import {
 
 const DUSDC_SCALE = 1_000_000;
 const COVER_USD_MIN = 0.1;
+/**
+ * Hard cooldown: after this many losses in a row the agent is clearly
+ * mispriced on the current regime. Stop minting entirely (still redeem)
+ * until a settled win breaks the streak. This is stronger than the
+ * size-halving cooldown and is what was missing during the 10-loss run.
+ */
+const LOSS_PAUSE_THRESHOLD = 4;
 
 function maxCoverUsd(): number {
     return Math.max(CONFIG.STRATEGY_QTY_USD * 3, 1.5);
-}
-
-/** Rule-based fallback: UP at strike `STRATEGY_BUFFER_TICKS` below spot. */
-function ruleStrike(state: OracleState, oracle: OracleSummary): bigint | null {
-    if (!state.latest_price) return null;
-    const spotRaw = BigInt(Math.floor(state.latest_price.spot));
-    const minStrike = BigInt(oracle.min_strike);
-    const tick = BigInt(oracle.tick_size);
-    const buffer = BigInt(CONFIG.STRATEGY_BUFFER_TICKS);
-    const offset = buffer * tick;
-    if (spotRaw <= minStrike + offset) return null;
-    const target = spotRaw - offset;
-    const idx = (target - minStrike) / tick;
-    return minStrike + idx * tick;
 }
 
 async function pickOracle(): Promise<OracleSummary | null> {
@@ -106,8 +101,24 @@ async function chooseMintBatch(
     chatId: number,
     managerId: string,
     oracle: OracleSummary,
-    state: OracleState
+    state: OracleState,
+    quotes: StrikeQuote[]
 ): Promise<BatchPlan | null> {
+    // No quotable strike → the vault is pricing nothing this tick. There is
+    // literally no in-band trade to make; minting anything would abort.
+    if (quotes.length === 0) {
+        console.log(
+            `[strategy] no quotable strikes for oracle ${oracle.oracle_id.slice(0, 10)} — skipping chat ${chatId}`
+        );
+        return null;
+    }
+    // Quotable-strike index — the deterministic backstop. Even if the model
+    // hallucinates a strike, anything not in here is dropped BEFORE it hits
+    // the chain, so EAskPriceOutOfBounds can no longer happen.
+    const quotableKeys = new Set(
+        quotes.map((q) => `${q.strikeRaw.toString()}:${q.direction}`)
+    );
+
     let openPositions: Position[] = [];
     try {
         openPositions = (await getManagerPositions(managerId)).filter(
@@ -119,6 +130,23 @@ async function chooseMintBatch(
 
     if (isAgentAvailable()) {
         const memory = await getMemory(chatId);
+
+        // Hard cooldown — a long losing streak means the agent is
+        // systematically mispriced on the current regime. Stop minting
+        // entirely until a win breaks the streak; redeeming still runs.
+        const streak = consecutiveLosses(memory);
+        if (streak >= LOSS_PAUSE_THRESHOLD) {
+            console.log(
+                `[strategy] hard cooldown for chat ${chatId}: ${streak} losses in a row — skipping mint`
+            );
+            await appendNote(chatId, {
+                ts: Date.now(),
+                topic: 'risk',
+                text: `Hard cooldown: ${streak} consecutive losses. Minting paused until a settled win breaks the streak. Re-examine whether the edge thesis actually held.`,
+            });
+            return null;
+        }
+
         const ctx: AgentContext = {
             chatId,
             oracle,
@@ -126,6 +154,7 @@ async function chooseMintBatch(
             openPositions,
             memory,
             exposureLastHour: exposureLastHourUsd(memory),
+            quotes,
         };
         const wr = recentWinRate(memory);
         const cooldownActive = wr !== null && wr.rate < 0.4;
@@ -172,6 +201,12 @@ async function chooseMintBatch(
                     continue;
                 }
                 const key = `${snapped.toString()}:${m.direction}`;
+                if (!quotableKeys.has(key)) {
+                    console.warn(
+                        `[strategy] dropping mint — ${m.direction} $${m.strikeUsd} is not a devInspect-quotable strike (would abort on-chain)`
+                    );
+                    continue;
+                }
                 if (seen.has(key)) {
                     console.warn(
                         `[strategy] dropping duplicate mint within batch ${key}`
@@ -226,13 +261,22 @@ async function chooseMintBatch(
         }
     }
 
-    // Rule-based fallback — single UP mint at buffer-ticks-below-spot
-    const strike = ruleStrike(state, oracle);
-    if (strike === null) return null;
+    // Rule-based fallback (agent disabled) — pick the quotable UP strike
+    // nearest spot. Sourced from the verified ladder so it can never abort.
+    const spotUsd = state.latest_price ? spotToUsd(state.latest_price.spot) : NaN;
+    if (!isFinite(spotUsd)) return null;
+    const upQuotes = quotes
+        .filter((q) => q.direction === 'UP')
+        .sort(
+            (a, b) =>
+                Math.abs(a.strikeUsd - spotUsd) - Math.abs(b.strikeUsd - spotUsd)
+        );
+    const pick = upQuotes[0];
+    if (!pick) return null;
     const dup = openPositions.find(
         (p) =>
             p.oracle_id === oracle.oracle_id &&
-            BigInt(p.strike) === strike &&
+            BigInt(p.strike) === pick.strikeRaw &&
             p.is_up === true
     );
     if (dup) return null;
@@ -240,12 +284,12 @@ async function chooseMintBatch(
         mints: [
             {
                 direction: 'UP',
-                strike,
+                strike: pick.strikeRaw,
                 coverUsd: CONFIG.STRATEGY_QTY_USD,
-                rationale: `rule: spot well above strike (buffer ${CONFIG.STRATEGY_BUFFER_TICKS} ticks)`,
+                rationale: `rule: nearest quotable UP strike (implied ${(pick.impliedProb * 100).toFixed(0)}%)`,
             },
         ],
-        summaryRationale: `rule loop · single UP mint at buffer ${CONFIG.STRATEGY_BUFFER_TICKS} ticks`,
+        summaryRationale: `rule loop · UP @ $${pick.strikeUsd.toFixed(0)} (no LLM agent configured)`,
     };
 }
 
@@ -286,7 +330,8 @@ async function tryMintForUser(
     bot: Telegraf,
     sub: Subscription,
     oracle: OracleSummary,
-    state: OracleState
+    state: OracleState,
+    quotes: StrikeQuote[]
 ): Promise<void> {
     const chatId = sub.chatId;
     const managerId = sub.botManagerId;
@@ -313,7 +358,7 @@ async function tryMintForUser(
         return;
     }
 
-    const plan = await chooseMintBatch(chatId, managerId, oracle, state);
+    const plan = await chooseMintBatch(chatId, managerId, oracle, state, quotes);
     if (!plan) return;
 
     const balances = await getUserBalances(chatId).catch(() => ({
@@ -583,9 +628,28 @@ export function startStrategyLoop(bot: Telegraf): () => void {
             return;
         }
 
+        // Quote the strike ladder ONCE per oracle per tick (oracle-level,
+        // not user-level) via devInspect, then share it across all users.
+        // This is what makes the agent price-aware and kills out-of-band
+        // aborts. devInspect needs any valid sender — reuse a subscriber's
+        // bot wallet (read-only, touches no sender objects).
+        const senderAddr = subs.find((s) => s.botWalletAddr)?.botWalletAddr;
+        const spotRaw = state.latest_price?.spot ?? 0;
+        let quotes: StrikeQuote[] = [];
+        if (senderAddr && spotRaw > 0) {
+            try {
+                quotes = await quoteLadder(senderAddr, oracle, spotRaw);
+            } catch (e) {
+                console.warn('[strategy] quoteLadder failed:', e);
+            }
+        }
+        console.log(
+            `[strategy] oracle ${oracle.oracle_id.slice(0, 10)} — ${quotes.length} quotable strikes`
+        );
+
         for (const sub of subs) {
             if (!sub.botManagerId) continue;
-            await tryMintForUser(bot, sub, oracle, state);
+            await tryMintForUser(bot, sub, oracle, state, quotes);
         }
     };
 

@@ -226,6 +226,22 @@ export function summarizeMemory(mem: UserMemory): {
     };
 }
 
+/**
+ * Count of losses in the most recent unbroken losing streak (newest trades
+ * first; stops at the first win or pending). Drives the hard cooldown — a
+ * long streak means the agent is mispriced on the current regime, so we
+ * stop minting entirely for a few ticks rather than just shrinking size.
+ */
+export function consecutiveLosses(mem: UserMemory): number {
+    let streak = 0;
+    for (const t of mem.trades) {
+        if (t.payoutUsd === undefined) continue; // skip still-pending
+        if (t.won) break;
+        streak += 1;
+    }
+    return streak;
+}
+
 /** USD of new exposure (cover) opened in the last hour, for rate-limiting. */
 export function exposureLastHourUsd(mem: UserMemory): number {
     const hourAgo = Date.now() - 60 * 60 * 1000;
