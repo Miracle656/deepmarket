@@ -1,0 +1,64 @@
+name: Move CI
+
+on:
+  pull_request:
+    paths:
+      - 'deepmarket_contract/**'
+      - '.github/workflows/move-ci.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'deepmarket_contract/**'
+      - '.github/workflows/move-ci.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: move-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: sui move build + test
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: deepmarket_contract
+    env:
+      # Pinned to match Move.toml dependency rev.
+      SUI_VERSION: testnet-v1.60.0
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Sui CLI (${{ env.SUI_VERSION }})
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          ASSET_URL=$(
+            curl -fsSL -H "Authorization: Bearer $GH_TOKEN" \
+              "https://api.github.com/repos/MystenLabs/sui/releases/tags/${SUI_VERSION}" \
+            | jq -r '[.assets[] | select(.name | test("ubuntu.*x86_64.*\\.tgz$"))] | .[0].browser_download_url'
+          )
+          if [ -z "$ASSET_URL" ] || [ "$ASSET_URL" = "null" ]; then
+            echo "No Sui release asset found for ${SUI_VERSION}" >&2
+            exit 1
+          fi
+          echo "Downloading $ASSET_URL"
+          curl -fsSL -o sui.tgz "$ASSET_URL"
+          mkdir -p sui-bin && tar -xzf sui.tgz -C sui-bin
+          SUI_BIN=$(find sui-bin -maxdepth 4 -name sui -type f -executable | head -1)
+          sudo mv "$SUI_BIN" /usr/local/bin/sui
+          sui --version
+
+      - name: sui move build
+        # NOTE: --warnings-are-errors intentionally omitted. The contract is
+        # already deployed on testnet; the self-transfer lint (E99001) in
+        # market_factory flags an intentional payout-to-sender pattern that
+        # cannot be changed without redeploying. Warnings still print.
+        run: sui move build
+
+      - name: sui move test
+        run: sui move test

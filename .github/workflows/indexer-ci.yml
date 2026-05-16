@@ -1,0 +1,60 @@
+name: Indexer CI
+
+on:
+  pull_request:
+    paths:
+      - 'indexer/**'
+      - '.github/workflows/indexer-ci.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'indexer/**'
+      - '.github/workflows/indexer-ci.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: indexer-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  # NOTE: RUSTFLAGS: -Dwarnings intentionally NOT set globally — it would
+  # also fail `cargo test` compilation on pre-existing rustc warnings.
+  # clippy keeps its own -D warnings (advisory step below).
+
+jobs:
+  verify:
+    name: fmt + clippy + test
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: indexer
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: indexer
+
+      - name: cargo fmt --check
+        run: cargo fmt --all -- --check
+
+      - name: cargo clippy
+        # Advisory while pre-existing lint debt (single_component_path_imports,
+        # too_many_arguments) is burned down. Runs + reports but does not
+        # gate. fmt + test remain hard gates.
+        continue-on-error: true
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+      - name: cargo test
+        # Project uses runtime sqlx queries (no compile-time macro checks),
+        # so no DATABASE_URL is required for compilation. Tests that need
+        # postgres/redis should gate themselves with `#[ignore]` or feature flags.
+        run: cargo test --all-features --no-fail-fast
