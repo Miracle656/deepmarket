@@ -46,7 +46,8 @@ pub async fn build_market_package(market_name: &str) -> anyhow::Result<CompileRe
     // The generated token modules only use sui::coin — no dependency on deepmarket_contract.
     // Including deepmarket_contract as both a local dependency (address = 0x0) and in [addresses]
     // (address = deployed_id) causes a "conflicting assignments" compilation error.
-    let move_toml = format!(r#"[package]
+    let move_toml = format!(
+        r#"[package]
 name = "{safe_name}"
 version = "0.0.1"
 edition = "2024.beta"
@@ -56,11 +57,13 @@ Sui = {{ git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-fra
 
 [addresses]
 {safe_name} = "0x0"
-"#);
+"#
+    );
     tfs::write(temp_dir.join("Move.toml"), move_toml).await?;
 
     // 3. Write sources/yes_market.move and no_market.move
-    let yes_code = format!(r#"module {safe_name}::yes_market {{
+    let yes_code = format!(
+        r#"module {safe_name}::yes_market {{
     use sui::coin;
     use std::option;
 
@@ -73,10 +76,12 @@ Sui = {{ git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-fra
         sui::transfer::public_transfer(treasury, sui::tx_context::sender(ctx));
     }}
 }}
-"#);
+"#
+    );
     tfs::write(temp_dir.join("sources").join("yes_market.move"), yes_code).await?;
 
-    let no_code = format!(r#"module {safe_name}::no_market {{
+    let no_code = format!(
+        r#"module {safe_name}::no_market {{
     use sui::coin;
     use std::option;
 
@@ -89,7 +94,8 @@ Sui = {{ git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-fra
         sui::transfer::public_transfer(treasury, sui::tx_context::sender(ctx));
     }}
 }}
-"#);
+"#
+    );
     tfs::write(temp_dir.join("sources").join("no_market.move"), no_code).await?;
 
     // 4. Run `sui move build --dump-bytecode-as-base64` via WSL
@@ -103,7 +109,8 @@ Sui = {{ git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-fra
             .arg("build")
             .arg("--dump-bytecode-as-base64")
             .output()
-    }).await??;
+    })
+    .await??;
 
     let stdout_str = String::from_utf8_lossy(&output.stdout);
     let stderr_str = String::from_utf8_lossy(&output.stderr);

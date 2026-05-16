@@ -1,13 +1,13 @@
+use crate::db::DbStore;
 use axum::{
     extract::{Path, State},
     routing::{get, post},
     Json, Router,
 };
+use chrono;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::sync::Arc;
-use chrono;
-use crate::db::DbStore;
 
 use tower_http::cors::{Any, CorsLayer};
 
@@ -90,7 +90,7 @@ async fn compile_market(Json(payload): Json<CompileRequest>) -> Json<serde_json:
         Err(e) => Json(json!({
             "success": false,
             "error": e.to_string()
-        }))
+        })),
     }
 }
 
@@ -109,7 +109,7 @@ async fn get_price_history(
 ) -> Json<serde_json::Value> {
     let history: Vec<PricePoint> = sqlx::query_as(
         "SELECT yes_price, no_price, timestamp FROM price_history
-         WHERE market_id = $1 ORDER BY timestamp ASC"
+         WHERE market_id = $1 ORDER BY timestamp ASC",
     )
     .bind(id as i64)
     .fetch_all(&state.db.pg_pool)
@@ -186,17 +186,13 @@ async fn query_sui_balance(
     });
 
     match client.post(rpc_url).json(&body).send().await {
-        Ok(resp) => {
-            match resp.json::<serde_json::Value>().await {
-                Ok(v) => {
-                    v["result"]["totalBalance"]
-                        .as_str()
-                        .and_then(|s| s.parse::<u64>().ok())
-                        .unwrap_or(0)
-                }
-                Err(_) => 0,
-            }
-        }
+        Ok(resp) => match resp.json::<serde_json::Value>().await {
+            Ok(v) => v["result"]["totalBalance"]
+                .as_str()
+                .and_then(|s| s.parse::<u64>().ok())
+                .unwrap_or(0),
+            Err(_) => 0,
+        },
         Err(_) => 0,
     }
 }
