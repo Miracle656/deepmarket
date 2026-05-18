@@ -5,11 +5,12 @@ import { motion } from 'framer-motion';
 import { ConnectButton } from '@mysten/dapp-kit';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
-import { ArrowRight, ExternalLink, Sun, Moon } from 'lucide-react';
+import { ArrowRight, ExternalLink /* Sun, Moon — theme toggle commented out (dark-locked) */ } from 'lucide-react';
 import { useMarkets } from '../lib/useMarkets';
 import { formatVol } from '../App';
-import { rippleThemeToggle } from '../lib/themeToggle';
-import deepMarketLogo from '../assets/sui-droplet.svg';
+// import { rippleThemeToggle } from '../lib/themeToggle'; // theme toggle commented out (dark-locked)
+import deepMarketLogo from '../assets/deepmarket.png';
+import suiDroplet from '../assets/sui-droplet.svg';
 import HeroCandles3D from './HeroCandles3D';
 import MarqueeRow from './MarqueeRow';
 import HowItWorksHorizontal from './HowItWorksHorizontal';
@@ -66,7 +67,8 @@ export default function LandingPage() {
     const [activeLayer, setActiveLayer] = useState<number | null>(null);
     const handleLayerHover = useCallback((idx: number | null) => setActiveLayer(idx), []);
 
-    const [theme, setTheme] = useState<'dark' | 'light'>(
+    // setTheme dropped — theme toggle button is commented out (dark-locked).
+    const [theme] = useState<'dark' | 'light'>(
         () => (localStorage.getItem('dm-theme') as 'dark' | 'light') ?? 'dark'
     );
 
@@ -211,7 +213,7 @@ export default function LandingPage() {
                     </button>
                 </div>
 
-                {/* Theme toggle */}
+                {/* Theme toggle — commented out (site is dark-locked).
                 <motion.button
                     onClick={(e) => rippleThemeToggle(e, theme, setTheme)}
                     whileHover={{ scale: 1.1 }}
@@ -226,6 +228,7 @@ export default function LandingPage() {
                 >
                     {theme === 'dark' ? <Sun size={15} /> : <Moon size={15} />}
                 </motion.button>
+                */}
 
                 <ConnectButton />
                 <motion.button
@@ -255,7 +258,8 @@ export default function LandingPage() {
                 {/* Left column */}
                 <div className="lp-hero-text">
 
-                    {/* Logo mark in hero */}
+                    {/* Hero badge + duplicate logo removed — logo already lives in the
+                        top-nav; the live-on-testnet badge read as noise above the headline.
                     <motion.div
                         className="h-badge lp-hero-badge-row"
                         style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 28 }}
@@ -280,6 +284,7 @@ export default function LandingPage() {
                             Live on Sui Testnet · DeepBook V3
                         </div>
                     </motion.div>
+                    */}
 
                     <h1 style={{
                         fontSize: 'clamp(2.6rem, 5.5vw, 4.2rem)',
@@ -287,7 +292,7 @@ export default function LandingPage() {
                         marginBottom: 28,
                     }}>
                         <span className="h-l1" style={{ display: 'block', color: 'var(--text-primary)' }}>
-                            Decentralized
+                            Trade outcomes.
                         </span>
                         <span className="h-l2" style={{
                             display: 'block',
@@ -296,7 +301,7 @@ export default function LandingPage() {
                             WebkitTextFillColor: 'transparent',
                             backgroundClip: 'text',
                         }}>
-                            Prediction Markets.
+                            Predict price on Sui.
                         </span>
                     </h1>
 
@@ -307,10 +312,11 @@ export default function LandingPage() {
                         maxWidth: 480,
                         marginBottom: 40,
                     }}>
-                        Trade YES and NO outcome tokens on real order books.
-                        Every position is on-chain. Every outcome is verifiable.
-                        Powered by <strong style={{ color: 'var(--text-primary)', fontWeight: 600 }}>Sui</strong> and{' '}
-                        <strong style={{ color: 'var(--text-primary)', fontWeight: 600 }}>DeepBook V3</strong>.
+                        Real order-book prediction on Sui. Create YES/NO event
+                        markets, or trade live price options on{' '}
+                        <strong style={{ color: 'var(--text-primary)', fontWeight: 600 }}>DeepBook Predict</strong>.
+                        On-chain positions, verifiable outcomes, optional{' '}
+                        <strong style={{ color: 'var(--text-primary)', fontWeight: 600 }}>autonomous agent</strong>.
                     </p>
 
                     <div className="h-ctas lp-hero-ctas" style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
@@ -588,7 +594,17 @@ export default function LandingPage() {
                         <img src={deepMarketLogo} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
                     </div>
                     <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontWeight: 600 }}>DeepMarket</span>
-                    <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>· Built on Sui Testnet</span>
+                    {/* Powered by Sui — only place the Sui mark is used as a brand element. */}
+                    <span style={{
+                        display: 'inline-flex', alignItems: 'center', gap: 6,
+                        fontSize: '0.78rem', color: 'var(--text-muted)',
+                        paddingLeft: 10, marginLeft: 4,
+                        borderLeft: '1px solid var(--border-base)',
+                    }}>
+                        Powered by
+                        <img src={suiDroplet} alt="Sui" width={12} height={15} style={{ objectFit: 'contain', opacity: 0.85 }} />
+                        <span style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>Sui</span>
+                    </span>
                 </div>
                 <div style={{ display: 'flex', gap: 24, fontSize: '0.78rem' }}>
                     {[

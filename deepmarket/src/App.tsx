@@ -18,7 +18,7 @@ import AgentAuthorizePage from './components/AgentAuthorizePage';
 
 type Filter = 'All' | 'Active' | 'Resolved';
 
-import deepMarketLogo from './assets/sui-droplet.svg';
+import deepMarketLogo from './assets/deepmarket.png';
 
 export function formatVol(v: number) {
   if (v >= 1_000_000) return `$${(v / 1_000_000).toFixed(2)}M`;
@@ -75,7 +75,7 @@ function AppInner() {
           }}>
             <img src={deepMarketLogo} alt="DeepMarket" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
           </div>
-          <span style={{ fontFamily: "'Inter Tight', Inter, sans-serif", fontWeight: 700, letterSpacing: '-0.01em' }}>DeepMarket</span>
+          DeepMarket
         </button>
 
         <div className="nav-tabs">
