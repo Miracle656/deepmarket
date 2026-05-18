@@ -68,20 +68,24 @@ html.theme-switching *::after {
   --border-base: rgba(255, 255, 255, 0.08);
   --border-strong: rgba(255, 255, 255, 0.14);
 
-  /* YES = blue (DeepMarket style) */
-  --yes: #1c6fff;
-  --yes-dim: rgba(28, 111, 255, 0.12);
-  --yes-border: rgba(28, 111, 255, 0.3);
+  /* Sui Blue — from the official Sui Media Kit (Logo_Sui_Droplet_Sui Blue.svg) */
+  --sui-blue: #298dff;
+  --sui-blue-tint: #4da2ff;
+
+  /* YES = Sui Blue */
+  --yes: #298dff;
+  --yes-dim: rgba(41, 141, 255, 0.12);
+  --yes-border: rgba(41, 141, 255, 0.3);
 
   /* NO = rose/red */
   --no: #ff4d6a;
   --no-dim: rgba(255, 77, 106, 0.12);
   --no-border: rgba(255, 77, 106, 0.3);
 
-  /* Accent blue (DeepBook style) */
-  --blue: #1c6fff;
-  --blue-dim: rgba(28, 111, 255, 0.12);
-  --blue-glow: rgba(28, 111, 255, 0.25);
+  /* Accent blue (Sui-aligned) */
+  --blue: #298dff;
+  --blue-dim: rgba(41, 141, 255, 0.12);
+  --blue-glow: rgba(41, 141, 255, 0.25);
 
   /* Text */
   --text-primary: #e8edf5;
@@ -208,7 +212,8 @@ body {
 .nav-logo {
   width: 28px;
   height: 28px;
-  background: linear-gradient(135deg, #1c6fff, #00e5a0);
+  /* Subtle Sui-blue glow background; the droplet SVG sits on top. */
+  background: radial-gradient(circle at 30% 30%, rgba(41, 141, 255, 0.35), rgba(41, 141, 255, 0) 70%);
   border-radius: 6px;
   display: flex;
   align-items: center;
@@ -1398,7 +1403,7 @@ body {
   color: var(--text-muted);
 }
 .input:focus {
-  border-color: var(--yes, #1c6fff);
+  border-color: var(--yes, #298dff);
   box-shadow: 0 0 0 3px rgba(28, 111, 255, 0.15);
 }
 

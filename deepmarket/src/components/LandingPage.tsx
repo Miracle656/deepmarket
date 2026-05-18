@@ -9,7 +9,7 @@ import { ArrowRight, ExternalLink, Sun, Moon } from 'lucide-react';
 import { useMarkets } from '../lib/useMarkets';
 import { formatVol } from '../App';
 import { rippleThemeToggle } from '../lib/themeToggle';
-import deepMarketLogo from '../assets/deepmarket.png';
+import deepMarketLogo from '../assets/sui-droplet.svg';
 import HeroCandles3D from './HeroCandles3D';
 import MarqueeRow from './MarqueeRow';
 import HowItWorksHorizontal from './HowItWorksHorizontal';

@@ -11,17 +11,18 @@
     --dm-bg-nav: #060c17;
     --dm-bg-panel: #0a1628;
     --dm-bg-card: #0d1f3c;
-    --dm-blue: #1c6fff;
-    --dm-blue-soft: #4d9fff;
-    --dm-blue-tint: rgba(28, 111, 255, 0.10);
-    --dm-blue-edge: rgba(28, 111, 255, 0.30);
+    /* Sui Blue — official Sui Media Kit (Sui_Droplet_Sui Blue.svg = #298DFF). */
+    --dm-blue: #298dff;
+    --dm-blue-soft: #4da2ff;
+    --dm-blue-tint: rgba(41, 141, 255, 0.10);
+    --dm-blue-edge: rgba(41, 141, 255, 0.30);
     --dm-rose: #ff4d6a;
     --dm-text: #e8edf5;
     --dm-text-muted: #7b8ea8;
     --dm-border: rgba(255, 255, 255, 0.08);
 
-    /* Nextra 3 accent → Brand blue. Hue 217 ≈ #1c6fff */
-    --nextra-primary-hue: 217deg;
+    /* Nextra 3 accent → Sui Blue (#298DFF ≈ HSL hue 212°). */
+    --nextra-primary-hue: 212deg;
     --nextra-primary-saturation: 100%;
 }
 

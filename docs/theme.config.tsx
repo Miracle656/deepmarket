@@ -7,17 +7,17 @@ const Logo = () => (
       display: 'flex',
       alignItems: 'center',
       gap: 9,
-      fontFamily: "'Inter', sans-serif",
-      fontWeight: 800,
+      fontFamily: "'Inter Tight', Inter, sans-serif",
+      fontWeight: 700,
       fontSize: '1.05rem',
-      letterSpacing: '-0.02em',
+      letterSpacing: '-0.01em',
     }}
   >
     <img
-      src="/deepmarket.png"
+      src="/sui-droplet.svg"
       alt="DeepMarket"
-      width={26}
-      height={26}
+      width={22}
+      height={28}
       style={{ objectFit: 'contain' }}
     />
     DeepMarket
@@ -44,7 +44,8 @@ const config: DocsThemeConfig = {
         name="description"
         content="DeepMarket — social, agent-augmented prediction trading on Sui. Spot YES/NO markets, DeepBook Predict, encrypted market chat, and an autonomous LLM trading agent."
       />
-      <link rel="icon" href="/deepmarket.png" />
+      <link rel="icon" type="image/svg+xml" href="/sui-droplet.svg" />
+      <meta name="theme-color" content="#298dff" />
       <link rel="preconnect" href="https://fonts.googleapis.com" />
       <link
         rel="preconnect"
@@ -53,7 +54,7 @@ const config: DocsThemeConfig = {
       />
       <link
         rel="stylesheet"
-        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap"
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Inter+Tight:wght@500;600;700;800&family=DM+Mono:wght@400;500&family=JetBrains+Mono:wght@400;500;600&display=swap"
       />
     </>
   ),
