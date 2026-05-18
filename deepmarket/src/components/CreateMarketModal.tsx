@@ -123,44 +123,36 @@ export default function CreateMarketModal({ onCreated, onClose }: Props) {
                 const [deepForYes] = poolTx.splitCoins(poolTx.object(deepCoin.coinObjectId), [poolTx.pure.u64(CONFIG.DEEP_POOL_FEE)]);
                 const [deepForNo]  = poolTx.splitCoins(poolTx.object(deepCoin.coinObjectId), [poolTx.pure.u64(CONFIG.DEEP_POOL_FEE)]);
 
-                const yesPool = poolTx.moveCall({
-                    target: `${CONFIG.DEEPBOOK_PACKAGE_ID}::pool::create_pool`,
+                // DeepBook V3 `create_permissionless_pool<Base, Quote>(
+                //   registry: &mut Registry, tick_size: u64, lot_size: u64,
+                //   min_size: u64, creation_fee: Coin<DEEP>, ctx
+                // ): ID
+                // Public entry. TxContext is auto-injected (not passed). The
+                // pool is created AND shared inside the function — there is no
+                // Pool object to public_share_object, and the return is an ID.
+                // (`create_pool` is Friend-visible and not callable here.)
+                poolTx.moveCall({
+                    target: `${CONFIG.DEEPBOOK_PACKAGE_ID}::pool::create_permissionless_pool`,
                     typeArguments: [yesType, suiType],
                     arguments: [
                         poolTx.object(CONFIG.DEEPBOOK_REGISTRY_ID),
                         poolTx.pure.u64(TICK_SIZE),
                         poolTx.pure.u64(LOT_SIZE),
                         poolTx.pure.u64(MIN_SIZE),
-                        poolTx.pure.bool(false),
-                        poolTx.pure.bool(false),
                         deepForYes,
-                        poolTx.object(CONFIG.CLOCK),
                     ],
                 });
-                poolTx.moveCall({
-                    target: '0x2::transfer::public_share_object',
-                    typeArguments: [`${CONFIG.DEEPBOOK_PACKAGE_ID}::pool::Pool<${yesType},${suiType}>`],
-                    arguments: [yesPool],
-                });
 
-                const noPool = poolTx.moveCall({
-                    target: `${CONFIG.DEEPBOOK_PACKAGE_ID}::pool::create_pool`,
+                poolTx.moveCall({
+                    target: `${CONFIG.DEEPBOOK_PACKAGE_ID}::pool::create_permissionless_pool`,
                     typeArguments: [noType, suiType],
                     arguments: [
                         poolTx.object(CONFIG.DEEPBOOK_REGISTRY_ID),
                         poolTx.pure.u64(TICK_SIZE),
                         poolTx.pure.u64(LOT_SIZE),
                         poolTx.pure.u64(MIN_SIZE),
-                        poolTx.pure.bool(false),
-                        poolTx.pure.bool(false),
                         deepForNo,
-                        poolTx.object(CONFIG.CLOCK),
                     ],
-                });
-                poolTx.moveCall({
-                    target: '0x2::transfer::public_share_object',
-                    typeArguments: [`${CONFIG.DEEPBOOK_PACKAGE_ID}::pool::Pool<${noType},${suiType}>`],
-                    arguments: [noPool],
                 });
 
                 const pub2 = await signAndExec({ transaction: poolTx });
