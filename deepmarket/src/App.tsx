@@ -237,12 +237,17 @@ function AppInner() {
                       </div>
                     )}
                     {filtered.map(m => {
-                      // Very basic pseudo-category inference from question
-                      let tag = 'CRYPTO';
+                      // Keyword-based category inference. Falls back to GENERAL
+                      // when nothing matches so unclassified markets don't lie
+                      // (the old default was CRYPTO — produced "CRYPTO" tags
+                      // on sports / politics questions).
+                      let tag = 'GENERAL';
                       const q = m.question.toLowerCase();
-                      if (q.includes('trump') || q.includes('election') || q.includes('vote') || q.includes('impeach')) tag = 'POLITICS';
-                      else if (q.includes('football') || q.includes('premier league') || q.includes('messi') || q.includes('ronaldo')) tag = 'SPORTS';
-                      else if (q.includes('interest rate') || q.includes('fed') || q.includes('stocks')) tag = 'FINANCE';
+                      const has = (...keys: string[]) => keys.some(k => q.includes(k));
+                      if (has('trump','biden','election','vote','impeach','president','senate','congress','parliament','tinubu','obama','prime minister')) tag = 'POLITICS';
+                      else if (has('arsenal','chelsea','liverpool','manchester','barcelona','real madrid','uefa','champions league','world cup','premier league','football','soccer','fifa','nba','nfl','mlb','olympic','super bowl','formula 1',' f1 ','tennis','messi','ronaldo','haaland')) tag = 'SPORTS';
+                      else if (has('bitcoin',' btc',' eth','ethereum',' sui ','solana',' sol ','doge','crypto','defi','halving',' etf','altcoin','stablecoin')) tag = 'CRYPTO';
+                      else if (has('interest rate','fed ','fomc','stocks','s&p','sp500','nasdaq','recession','inflation',' gdp','unemployment','naira','currency')) tag = 'FINANCE';
 
                       return (
                         <div
