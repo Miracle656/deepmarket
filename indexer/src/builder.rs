@@ -98,13 +98,16 @@ Sui = {{ git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-fra
     );
     tfs::write(temp_dir.join("sources").join("no_market.move"), no_code).await?;
 
-    // 4. Run `sui move build --dump-bytecode-as-base64` via WSL
-    let temp_dir_str = temp_dir.to_string_lossy().to_string();
+    // 4. Run `sui move build --dump-bytecode-as-base64`.
+    //
+    // Calls the Sui CLI directly via OS PATH — works the same on Windows
+    // (sui.exe), macOS, and Linux. The previous `wsl <cmd>` shim required
+    // `sui` on PATH for non-interactive WSL invocations, which fails when
+    // the binary lives in ~/.local/bin (exit 127, "sui: command not found").
+    let temp_dir_for_cmd = temp_dir.clone();
     let output = tokio::task::spawn_blocking(move || {
-        Command::new("wsl")
-            .arg("--cd")
-            .arg(&temp_dir_str)
-            .arg("sui")
+        Command::new("sui")
+            .current_dir(&temp_dir_for_cmd)
             .arg("move")
             .arg("build")
             .arg("--dump-bytecode-as-base64")
