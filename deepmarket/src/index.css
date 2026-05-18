@@ -1612,7 +1612,10 @@ body {
 
 /* ── Tablet (≤ 900px) ── */
 @media (max-width: 900px) {
-  .trade-sidebar  { display: none; }
+  /* Trade sidebar is NOT hidden here — the rule above (~line 361) already
+     restyles it to full-width and stacks it below the content so mobile
+     users can still place trades. A blanket display:none used to live here
+     and silently broke mobile trading. */
   .ticker-bar     { padding: 8px 12px; }
   .main-layout    { flex-direction: column; overflow-y: auto; }
   .content-area   { overflow-y: visible; }
