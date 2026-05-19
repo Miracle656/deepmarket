@@ -280,6 +280,37 @@ export default function TradeSidebar({ market }: Props) {
         setTimeout(refreshBalances, 3000);
     };
 
+    // Import the DEEP/SUI conversion rate into the current outcome's pool
+    // (one-time per pool). Without a DEEP price point, place_limit_order
+    // aborts in deep_price::calculate_order_deep_price (code 2 = ENoDataPoints)
+    // because permissionless pools start with no price reference.
+    const handleSyncDeepPrice = async () => {
+        if (!acct || !market) return;
+        const poolId = outcome === 'yes' ? market.yesPoolId : market.noPoolId;
+        if (!poolId || /^0x0+$/.test(poolId)) return toast('error', 'Market pools not configured');
+        const { baseCoinType, quoteCoinType } = await getPoolTypes(poolId);
+        try {
+            setLoading(true);
+            const tx = new Transaction();
+            tx.setSender(acct.address);
+            tx.moveCall({
+                target: `${testnetPackageIds.DEEPBOOK_PACKAGE_ID}::pool::add_deep_price_point`,
+                arguments: [
+                    tx.object(poolId),                                 // target pool
+                    tx.object(CONFIG.DEEP_SUI_REFERENCE_POOL_ID),      // whitelisted DEEP/SUI ref
+                    tx.object('0x6'),                                  // clock
+                ],
+                typeArguments: [baseCoinType, quoteCoinType, CONFIG.DEEP_TOKEN_TYPE, CONFIG.SUI_TYPE],
+            });
+            await signAndExec({ transaction: tx });
+            toast('success', 'DEEP price synced', `${outcome.toUpperCase()} pool can now compute fees`);
+        } catch (e: any) {
+            toast('error', 'DEEP price sync failed', e.message || 'Unknown error');
+        } finally {
+            setLoading(false);
+        }
+    };
+
     // Cancel every resting order this user has on the current outcome's
     // pool. Releases locked collateral back into the BalanceManager.
     // Public DeepBook fn — no order_id needed.
@@ -668,26 +699,42 @@ export default function TradeSidebar({ market }: Props) {
                     </button>
                 )}
 
-                {/* Cancel-all-orders escape hatch — clears any of your
-                    resting orders on the current outcome's pool. Useful if
-                    you posted a junk-priced order or want to start clean. */}
+                {/* Pool-maintenance actions */}
                 {managerId && !isResolved && (
-                    <button
-                        onClick={handleCancelAllOrders}
-                        disabled={loading}
-                        style={{
-                            marginTop: 8, width: '100%', padding: '7px',
-                            background: 'transparent',
-                            border: '1px solid var(--border-base)',
-                            borderRadius: 6, cursor: 'pointer',
-                            color: 'var(--text-muted)',
-                            fontSize: '0.75rem', fontWeight: 600,
-                            fontFamily: 'inherit', letterSpacing: '0.02em',
-                        }}
-                        title="Cancels every resting order this wallet has on the selected outcome's pool"
-                    >
-                        Cancel my open orders on {outcome.toUpperCase()} pool
-                    </button>
+                    <>
+                        <button
+                            onClick={handleSyncDeepPrice}
+                            disabled={loading}
+                            style={{
+                                marginTop: 8, width: '100%', padding: '7px',
+                                background: 'transparent',
+                                border: '1px solid var(--blue, #1c6fff)',
+                                borderRadius: 6, cursor: 'pointer',
+                                color: 'var(--blue, #1c6fff)',
+                                fontSize: '0.75rem', fontWeight: 700,
+                                fontFamily: 'inherit', letterSpacing: '0.02em',
+                            }}
+                            title="One-time per pool: import a DEEP/SUI conversion rate so this pool can compute fees. Required before the first limit order on a fresh pool."
+                        >
+                            Sync DEEP price · {outcome.toUpperCase()} pool (one-time)
+                        </button>
+                        <button
+                            onClick={handleCancelAllOrders}
+                            disabled={loading}
+                            style={{
+                                marginTop: 6, width: '100%', padding: '7px',
+                                background: 'transparent',
+                                border: '1px solid var(--border-base)',
+                                borderRadius: 6, cursor: 'pointer',
+                                color: 'var(--text-muted)',
+                                fontSize: '0.75rem', fontWeight: 600,
+                                fontFamily: 'inherit', letterSpacing: '0.02em',
+                            }}
+                            title="Cancels every resting order this wallet has on the selected outcome's pool"
+                        >
+                            Cancel my open orders on {outcome.toUpperCase()} pool
+                        </button>
+                    </>
                 )}
 
                 <div className="trade-disclaimer">

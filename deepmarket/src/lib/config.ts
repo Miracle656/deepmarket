@@ -21,6 +21,12 @@ export const CONFIG = {
     DEEP_TOKEN_TYPE: import.meta.env.VITE_DEEP_TOKEN_TYPE as string,
     DEEP_SCALAR: 1_000_000n,     // 1 DEEP = 1,000,000 base units (6 decimals)
     DEEP_POOL_FEE: 500_000_000n, // 500 DEEP per pool (from POOL_CREATION_FEE_DEEP)
+    // Whitelisted DEEP/SUI reference pool (testnet). Permissionless pools
+    // import their DEEP price from this via pool::add_deep_price_point so
+    // place_limit_order can compute fees. One-time per pool.
+    DEEP_SUI_REFERENCE_POOL_ID:
+        (import.meta.env.VITE_DEEP_SUI_REFERENCE_POOL_ID as string | undefined) ??
+        '0x48c95963e9eac37a316b7ae04a0deb761bcdcc2b67912374d6036e7f0e9bae9f',
 
     // ── DeepBook Predict (testnet, predict-testnet-4-16 branch) ──
     PREDICT_PACKAGE_ID: '0xf5ea2b3749c65d6e56507cc35388719aadb28f9cab873696a2f8687f5c785138',
