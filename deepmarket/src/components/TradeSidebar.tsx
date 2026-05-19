@@ -49,15 +49,15 @@ export default function TradeSidebar({ market }: Props) {
                 owner: acct.address,
                 coinType: `${market.tokenPackageId}::yes_market::YES_MARKET`,
             });
-            // YES/NO outcome tokens are 6-decimal (1e6), not 9 like SUI.
-            setYesBalance(Number(yesBal.totalBalance) / 1e6);
+            // YES/NO outcome tokens are 9-decimal (1e9), same as SUI.
+            setYesBalance(Number(yesBal.totalBalance) / 1e9);
         } catch { setYesBalance(0); }
         try {
             const noBal = await suiClient.getBalance({
                 owner: acct.address,
                 coinType: `${market.tokenPackageId}::no_market::NO_MARKET`,
             });
-            setNoBalance(Number(noBal.totalBalance) / 1e6);
+            setNoBalance(Number(noBal.totalBalance) / 1e9);
         } catch { setNoBalance(0); }
     }, [acct, suiClient, market?.tokenPackageId]);
 
@@ -300,7 +300,11 @@ export default function TradeSidebar({ market }: Props) {
         if (px >= 1) return toast('error', 'Price must be between 0 and 1 (YES + NO = 1 SUI)');
 
         const FLOAT_SCALAR = 1e9;
-        const baseScalar = 1e6;   // YES/NO 6-decimal
+        // Per-market YES/NO tokens are 9-decimal on-chain (verified via
+        // getCoinMetadata), same as SUI — NOT 6. With base==quote==1e9:
+        //   inputPrice = price * 1e9 * 1e9 / 1e9 = price * 1e9
+        //   inputQty   = qty * 1e9
+        const baseScalar = 1e9;   // YES/NO 9-decimal
         const quoteScalar = 1e9;  // SUI 9-decimal
         const MAX_TIMESTAMP = 1844674407370955161n;
 

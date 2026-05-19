@@ -10,8 +10,9 @@
 //          book is one-sided (mid_price aborts without both sides)
 //
 // On-chain price is scaled the same as our limit orders: humanPrice =
-// raw / 1e12 (FLOAT_SCALAR 1e9 * quoteScalar 1e9 / baseScalar 1e6). For a
-// YES/SUI pool that human price IS the implied probability of YES (0..1).
+// raw / 1e9 (FLOAT_SCALAR 1e9 * quoteScalar 1e9 / baseScalar 1e9 — the
+// YES/NO tokens are 9-decimal, same as SUI). For a YES/SUI pool that
+// human price IS the implied probability of YES (0..1).
 
 import { Transaction } from '@mysten/sui/transactions';
 import { bcs } from '@mysten/sui/bcs';
@@ -21,7 +22,7 @@ import type { useSuiClient } from '@mysten/dapp-kit';
 type SuiClient = ReturnType<typeof useSuiClient>;
 
 const DEEPBOOK = testnetPackageIds.DEEPBOOK_PACKAGE_ID;
-const PRICE_SCALE = 1e12; // raw -> human (SUI per share)
+const PRICE_SCALE = 1e9; // raw -> human (SUI per share); 9-dec base & quote
 const ZERO_ADDR =
     '0x0000000000000000000000000000000000000000000000000000000000000000';
 
