@@ -372,6 +372,26 @@ export default function TradeSidebar({ market }: Props) {
             });
         }
 
+        // DeepBook V3 on non-whitelisted pools REQUIRES pay_with_deep=true
+        // (pool.move line 178). The manager must hold DEEP to cover fees.
+        // We deposit a small DEEP buffer alongside every limit order; the
+        // pool only consumes what it needs, the rest stays for the next.
+        const DEEP_TYPE = CONFIG.DEEP_TOKEN_TYPE;
+        const DEEP_FEE_DEPOSIT = BigInt(1_000_000); // 1 DEEP (6-dec)
+        const deepCoins = await suiClient.getCoins({ owner: acct.address, coinType: DEEP_TYPE });
+        if (deepCoins.data.length === 0) {
+            return toast('error', 'No DEEP in wallet', 'DeepBook fees are paid in DEEP. Acquire some testnet DEEP first.');
+        }
+        const deepRefs = deepCoins.data.map(c => tx.object(c.coinObjectId));
+        const deepPrimary = deepRefs[0];
+        if (deepRefs.length > 1) tx.mergeCoins(deepPrimary, deepRefs.slice(1));
+        const [deepIn] = tx.splitCoins(deepPrimary, [tx.pure.u64(DEEP_FEE_DEPOSIT)]);
+        tx.moveCall({
+            target: `${testnetPackageIds.DEEPBOOK_PACKAGE_ID}::balance_manager::deposit`,
+            arguments: [tx.object(managerId), deepIn],
+            typeArguments: [DEEP_TYPE],
+        });
+
         const tradeProof = tx.moveCall({
             target: `${testnetPackageIds.DEEPBOOK_PACKAGE_ID}::balance_manager::generate_proof_as_owner`,
             arguments: [tx.object(managerId)],
@@ -389,7 +409,7 @@ export default function TradeSidebar({ market }: Props) {
                 tx.pure.u64(inputPrice),
                 tx.pure.u64(inputQuantity),
                 tx.pure.bool(isBid),
-                tx.pure.bool(false),      // pay_with_deep=false (resting maker; no DEEP)
+                tx.pure.bool(true),       // pay_with_deep=true (DeepBook V3 requires this on non-whitelisted pools)
                 tx.pure.u64(MAX_TIMESTAMP),
                 tx.object('0x6'),         // clock
             ],
