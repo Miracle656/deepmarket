@@ -134,7 +134,13 @@ export default function TradeSidebar({ market }: Props) {
         if (!poolId || /^0x0+$/.test(poolId)) return toast('error', 'Market pools not configured');
 
         const amountMist = BigInt(Math.round(numAmount * 1_000_000_000));
-        const sharesQuantityMist = BigInt(Math.round((numAmount / price) * 1_000_000_000));
+        // Quantity must be a multiple of the pool's lot_size (1,000,000 raw
+        // — set at pool creation). Floor to nearest lot or DeepBook aborts
+        // order_info::validate_inputs (EOrderInvalidLotSize, code 2).
+        const LOT = 1_000_000n;
+        const raw = BigInt(Math.round((numAmount / price) * 1_000_000_000));
+        const sharesQuantityMist = (raw / LOT) * LOT;
+        if (sharesQuantityMist <= 0n) return toast('error', 'Amount too small for one lot (0.001 share min)');
 
         const { baseCoinType, quoteCoinType } = await getPoolTypes(poolId);
 
@@ -147,6 +153,20 @@ export default function TradeSidebar({ market }: Props) {
             arguments: [tx.object(managerId), coin],
             typeArguments: [quoteCoinType],
         });
+
+        // DEEP fee deposit — non-whitelisted pools require pay_with_deep=true.
+        const deepCoins = await suiClient.getCoins({ owner: acct.address, coinType: CONFIG.DEEP_TOKEN_TYPE });
+        if (deepCoins.data.length === 0) return toast('error', 'No DEEP in wallet', 'DeepBook fees are paid in DEEP.');
+        const deepRefs = deepCoins.data.map(c => tx.object(c.coinObjectId));
+        const deepPrimary = deepRefs[0];
+        if (deepRefs.length > 1) tx.mergeCoins(deepPrimary, deepRefs.slice(1));
+        const [deepIn] = tx.splitCoins(deepPrimary, [tx.pure.u64(1_000_000)]); // 1 DEEP
+        tx.moveCall({
+            target: `${testnetPackageIds.DEEPBOOK_PACKAGE_ID}::balance_manager::deposit`,
+            arguments: [tx.object(managerId), deepIn],
+            typeArguments: [CONFIG.DEEP_TOKEN_TYPE],
+        });
+
         const tradeProof = tx.moveCall({
             target: `${testnetPackageIds.DEEPBOOK_PACKAGE_ID}::balance_manager::generate_proof_as_owner`,
             arguments: [tx.object(managerId)],
@@ -160,8 +180,8 @@ export default function TradeSidebar({ market }: Props) {
                 tx.pure.u64(0),
                 tx.pure.u8(0),
                 tx.pure.u64(sharesQuantityMist),
-                tx.pure.bool(true),
-                tx.pure.bool(false),
+                tx.pure.bool(true),     // is_bid (buy)
+                tx.pure.bool(true),     // pay_with_deep=true (required)
                 tx.object('0x6'),
             ],
             typeArguments: [baseCoinType, quoteCoinType],
@@ -186,7 +206,10 @@ export default function TradeSidebar({ market }: Props) {
         if (!market.tokenPackageId) return toast('error', 'Token package unknown');
 
         const { baseCoinType, quoteCoinType } = await getPoolTypes(poolId);
-        const sellQuantityMist = BigInt(Math.round(numAmount * 1_000_000_000));
+        const LOT = 1_000_000n;
+        const rawSell = BigInt(Math.round(numAmount * 1_000_000_000));
+        const sellQuantityMist = (rawSell / LOT) * LOT;
+        if (sellQuantityMist <= 0n) return toast('error', 'Amount too small for one lot (0.001 share min)');
 
         const coins = await suiClient.getCoins({ owner: acct.address, coinType: baseCoinType });
         if (coins.data.length === 0) return toast('error', `No ${outcome.toUpperCase()} tokens to sell`);
@@ -205,6 +228,20 @@ export default function TradeSidebar({ market }: Props) {
             arguments: [tx.object(managerId), sellCoin],
             typeArguments: [baseCoinType],
         });
+
+        // DEEP fee deposit (same reason as handleBuy/handleLimitOrder).
+        const deepCoins = await suiClient.getCoins({ owner: acct.address, coinType: CONFIG.DEEP_TOKEN_TYPE });
+        if (deepCoins.data.length === 0) return toast('error', 'No DEEP in wallet', 'DeepBook fees are paid in DEEP.');
+        const deepRefs = deepCoins.data.map(c => tx.object(c.coinObjectId));
+        const deepPrimary = deepRefs[0];
+        if (deepRefs.length > 1) tx.mergeCoins(deepPrimary, deepRefs.slice(1));
+        const [deepIn] = tx.splitCoins(deepPrimary, [tx.pure.u64(1_000_000)]); // 1 DEEP
+        tx.moveCall({
+            target: `${testnetPackageIds.DEEPBOOK_PACKAGE_ID}::balance_manager::deposit`,
+            arguments: [tx.object(managerId), deepIn],
+            typeArguments: [CONFIG.DEEP_TOKEN_TYPE],
+        });
+
         const tradeProof = tx.moveCall({
             target: `${testnetPackageIds.DEEPBOOK_PACKAGE_ID}::balance_manager::generate_proof_as_owner`,
             arguments: [tx.object(managerId)],
@@ -219,7 +256,7 @@ export default function TradeSidebar({ market }: Props) {
                 tx.pure.u8(0),
                 tx.pure.u64(sellQuantityMist),
                 tx.pure.bool(false), // isBid=false → selling base for quote
-                tx.pure.bool(false),
+                tx.pure.bool(true),  // pay_with_deep=true (required)
                 tx.object('0x6'),
             ],
             typeArguments: [baseCoinType, quoteCoinType],
