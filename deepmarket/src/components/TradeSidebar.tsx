@@ -394,7 +394,22 @@ export default function TradeSidebar({ market }: Props) {
             }
         } catch (e: any) {
             console.error(e);
-            toast('error', 'Trade failed', e.message || 'Unknown error');
+            const msg = String(e?.message ?? '');
+            // Market order on an empty/thin book: place_*_order fills nothing,
+            // then withdraw_with_proof aborts (code 3). Turn the cryptic
+            // MoveAbort into an actionable instruction.
+            if (
+                /withdraw_with_proof|abort code: 3|MoveAbort/i.test(msg) &&
+                orderKind === 'market'
+            ) {
+                toast(
+                    'error',
+                    'Market order filled nothing',
+                    'The order book is empty/thin, so there was nothing to match. Switch to LIMIT mode and post a price to add liquidity first.'
+                );
+            } else {
+                toast('error', 'Trade failed', msg || 'Unknown error');
+            }
         } finally {
             setLoading(false);
         }
@@ -428,20 +443,38 @@ export default function TradeSidebar({ market }: Props) {
                     </div>
                 )}
 
-                {/* Order kind: Limit (post a resting order) vs Market (take existing) */}
+                {/* Order kind: Limit (post a resting order) vs Market (take existing).
+                    Inline styles so the active state is unmistakable regardless of CSS. */}
                 {!isResolved && (
-                    <div className="trade-mode-tabs" style={{ marginTop: 8 }}>
-                        <button
-                            className={`trade-mode-tab ${orderKind === 'limit' ? 'active' : ''}`}
-                            onClick={() => { setOrderKind('limit'); setAmount(''); }}
-                            title="Post a resting order at your price. Creates liquidity. Required on an empty book."
-                        >Limit</button>
-                        <button
-                            className={`trade-mode-tab ${orderKind === 'market' ? 'active' : ''}`}
-                            onClick={() => { setOrderKind('market'); setAmount(''); }}
-                            title="Fill instantly against existing orders. Does nothing if the book is empty."
-                        >Market</button>
-                    </div>
+                    <>
+                        <div style={{ display: 'flex', gap: 6, marginTop: 8, background: 'var(--bg-hover, rgba(255,255,255,0.04))', padding: 4, borderRadius: 8 }}>
+                            {(['limit', 'market'] as const).map((k) => {
+                                const active = orderKind === k;
+                                return (
+                                    <button
+                                        key={k}
+                                        onClick={() => { setOrderKind(k); setAmount(''); }}
+                                        style={{
+                                            flex: 1, padding: '8px 6px', borderRadius: 6,
+                                            fontSize: '0.82rem', fontWeight: 800, cursor: 'pointer',
+                                            fontFamily: 'inherit', textTransform: 'uppercase', letterSpacing: '0.03em',
+                                            border: active ? '1px solid var(--blue, #1c6fff)' : '1px solid transparent',
+                                            background: active ? 'var(--blue, #1c6fff)' : 'transparent',
+                                            color: active ? '#fff' : 'var(--text-muted, #7b8ea8)',
+                                            transition: 'all 0.12s ease',
+                                        }}
+                                    >
+                                        {k === 'limit' ? 'Limit ◆' : 'Market'}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 6, lineHeight: 1.5 }}>
+                            {orderKind === 'limit'
+                                ? '◆ LIMIT — post a resting order at your price. Adds liquidity. Use this to seed a new market.'
+                                : 'MARKET — fills instantly against existing orders. Does nothing on an empty book.'}
+                        </div>
+                    </>
                 )}
 
                 {/* YES / NO pills */}
