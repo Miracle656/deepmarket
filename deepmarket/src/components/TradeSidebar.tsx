@@ -280,6 +280,36 @@ export default function TradeSidebar({ market }: Props) {
         setTimeout(refreshBalances, 3000);
     };
 
+    // Cancel every resting order this user has on the current outcome's
+    // pool. Releases locked collateral back into the BalanceManager.
+    // Public DeepBook fn — no order_id needed.
+    const handleCancelAllOrders = async () => {
+        if (!acct || !market || !managerId) return;
+        const poolId = outcome === 'yes' ? market.yesPoolId : market.noPoolId;
+        if (!poolId || /^0x0+$/.test(poolId)) return toast('error', 'Market pools not configured');
+        const { baseCoinType, quoteCoinType } = await getPoolTypes(poolId);
+        try {
+            setLoading(true);
+            const tx = new Transaction();
+            tx.setSender(acct.address);
+            const proof = tx.moveCall({
+                target: `${testnetPackageIds.DEEPBOOK_PACKAGE_ID}::balance_manager::generate_proof_as_owner`,
+                arguments: [tx.object(managerId)],
+            });
+            tx.moveCall({
+                target: `${testnetPackageIds.DEEPBOOK_PACKAGE_ID}::pool::cancel_all_orders`,
+                arguments: [tx.object(poolId), tx.object(managerId), proof, tx.object('0x6')],
+                typeArguments: [baseCoinType, quoteCoinType],
+            });
+            await signAndExec({ transaction: tx });
+            toast('success', 'Open orders cancelled', `${outcome.toUpperCase()} pool · collateral returned to your BalanceManager`);
+        } catch (e: any) {
+            toast('error', 'Cancel failed', e.message || 'Unknown error');
+        } finally {
+            setLoading(false);
+        }
+    };
+
     // ── Limit order ───────────────────────────────────────────────────
     // Posts a resting order on the DeepBook book (the only way to create
     // liquidity on a fresh market). Scaling is taken verbatim from the
@@ -615,6 +645,28 @@ export default function TradeSidebar({ market }: Props) {
                                 : orderKind === 'limit'
                                     ? `Post ${mode === 'buy' ? 'Bid' : 'Ask'} · ${outcome.toUpperCase()}`
                                     : `${mode === 'buy' ? 'Buy' : 'Sell'} ${outcome.toUpperCase()}`}
+                    </button>
+                )}
+
+                {/* Cancel-all-orders escape hatch — clears any of your
+                    resting orders on the current outcome's pool. Useful if
+                    you posted a junk-priced order or want to start clean. */}
+                {managerId && !isResolved && (
+                    <button
+                        onClick={handleCancelAllOrders}
+                        disabled={loading}
+                        style={{
+                            marginTop: 8, width: '100%', padding: '7px',
+                            background: 'transparent',
+                            border: '1px solid var(--border-base)',
+                            borderRadius: 6, cursor: 'pointer',
+                            color: 'var(--text-muted)',
+                            fontSize: '0.75rem', fontWeight: 600,
+                            fontFamily: 'inherit', letterSpacing: '0.02em',
+                        }}
+                        title="Cancels every resting order this wallet has on the selected outcome's pool"
+                    >
+                        Cancel my open orders on {outcome.toUpperCase()} pool
                     </button>
                 )}
 
