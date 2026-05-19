@@ -20,10 +20,15 @@ type Filter = 'All' | 'Active' | 'Resolved';
 
 import deepMarketLogo from './assets/deepmarket.png';
 
-export function formatVol(v: number) {
-  if (v >= 1_000_000) return `$${(v / 1_000_000).toFixed(2)}M`;
-  if (v >= 1_000) return `$${(v / 1_000).toFixed(1)}K`;
-  return `$${v}`;
+// Volume is cumulative QUOTE traded via DeepBook fills, in raw 1e9 SUI
+// units (set by the indexer's OrderFilled handler). Render as SUI.
+export function formatVol(rawQuote: number) {
+  const sui = (rawQuote || 0) / 1e9;
+  if (sui >= 1_000_000) return `${(sui / 1e6).toFixed(2)}M SUI`;
+  if (sui >= 1_000) return `${(sui / 1e3).toFixed(1)}K SUI`;
+  if (sui >= 1) return `${sui.toFixed(2)} SUI`;
+  if (sui > 0) return `${sui.toFixed(4)} SUI`;
+  return `0 SUI`;
 }
 
 function formatDate(ms: number) {
