@@ -249,13 +249,34 @@ function AppInner() {
                       else if (has('bitcoin',' btc',' eth','ethereum',' sui ','solana',' sol ','doge','crypto','defi','halving',' etf','altcoin','stablecoin')) tag = 'CRYPTO';
                       else if (has('interest rate','fed ','fomc','stocks','s&p','sp500','nasdaq','recession','inflation',' gdp','unemployment','naira','currency')) tag = 'FINANCE';
 
+                      // Pool status — markets registered with real DeepBook pools
+                      // expose a non-zero yesPoolId. Skip-pools markets carry 0x0…0
+                      // and can only be minted/redeemed (no order-book trading).
+                      const ZERO = '0x0000000000000000000000000000000000000000000000000000000000000000';
+                      const hasPools = m.yesPoolId && m.yesPoolId !== ZERO;
+
                       return (
                         <div
                           key={m.id}
                           className="market-card"
                           onClick={() => navigate(`/markets/${m.objectId}`)}
                         >
-                          <div className="market-card-tag">{tag}</div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                            <div className="market-card-tag">{tag}</div>
+                            <div
+                              className="market-card-tag"
+                              title={hasPools
+                                ? 'DeepBook YES/NO pools exist — limit orders, real CLOB matching.'
+                                : 'No DeepBook pools — mint & redeem only (no order book on this market).'}
+                              style={{
+                                borderColor: hasPools ? 'var(--yes-border)' : 'var(--border-base)',
+                                color: hasPools ? 'var(--yes)' : 'var(--text-muted)',
+                                background: hasPools ? 'var(--yes-dim)' : 'transparent',
+                              }}
+                            >
+                              {hasPools ? 'ORDER BOOK' : 'MINT ONLY'}
+                            </div>
+                          </div>
                           <div className="market-card-question">{m.question}</div>
 
                           <div className="market-card-prices">

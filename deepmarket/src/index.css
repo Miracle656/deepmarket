@@ -859,6 +859,14 @@ body {
   border: 1px solid var(--no-border);
 }
 
+/* Generic active state — used by the Limit | Market toggle (no buy/sell
+   modifier). Without this the toggle had zero visual feedback. */
+.trade-mode-tab.active {
+  background: var(--blue-dim, rgba(28, 111, 255, 0.12));
+  color: var(--blue, #1c6fff);
+  border: 1px solid var(--blue, #1c6fff);
+}
+
 /* Outcome selector */
 .outcome-pills {
   display: grid;

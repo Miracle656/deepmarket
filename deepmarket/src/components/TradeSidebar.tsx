@@ -18,6 +18,10 @@ export default function TradeSidebar({ market }: Props) {
     const { toast } = useToast();
 
     const [mode, setMode] = useState<'buy' | 'sell'>('buy');
+    // 'limit' is the default: a fresh CLOB market has an empty book, so a
+    // market order fills nothing. Limit orders are what create liquidity.
+    const [orderKind, setOrderKind] = useState<'market' | 'limit'>('limit');
+    const [limitPrice, setLimitPrice] = useState('');
     const [outcome, setOutcome] = useState<'yes' | 'no'>('yes');
     const [amount, setAmount] = useState('');
     const [loading, setLoading] = useState(false);
@@ -45,14 +49,15 @@ export default function TradeSidebar({ market }: Props) {
                 owner: acct.address,
                 coinType: `${market.tokenPackageId}::yes_market::YES_MARKET`,
             });
-            setYesBalance(Number(yesBal.totalBalance) / 1e9);
+            // YES/NO outcome tokens are 6-decimal (1e6), not 9 like SUI.
+            setYesBalance(Number(yesBal.totalBalance) / 1e6);
         } catch { setYesBalance(0); }
         try {
             const noBal = await suiClient.getBalance({
                 owner: acct.address,
                 coinType: `${market.tokenPackageId}::no_market::NO_MARKET`,
             });
-            setNoBalance(Number(noBal.totalBalance) / 1e9);
+            setNoBalance(Number(noBal.totalBalance) / 1e6);
         } catch { setNoBalance(0); }
     }, [acct, suiClient, market?.tokenPackageId]);
 
@@ -97,16 +102,25 @@ export default function TradeSidebar({ market }: Props) {
         try {
             setLoading(true);
             const tx = new Transaction();
+            // DeepBook V3 `balance_manager::new(ctx): BalanceManager` — returns
+            // a fresh owned BalanceManager. The old `create_balance_manager`
+            // doesn't exist on the deployed package (FunctionNotFound).
+            // TxContext is auto-injected by Sui; no explicit args.
             const manager = tx.moveCall({
-                target: `${testnetPackageIds.DEEPBOOK_PACKAGE_ID}::balance_manager::create_balance_manager`,
+                target: `${testnetPackageIds.DEEPBOOK_PACKAGE_ID}::balance_manager::new`,
                 arguments: [],
             });
             tx.transferObjects([manager], acct.address);
             await signAndExec({ transaction: tx });
             toast('success', 'DeepBook account created');
-            setTimeout(() => {
-                if (acct) getUserBalanceManager(suiClient, acct.address).then(setManagerId);
-            }, 3000);
+            // Poll a few times — the new owned object can take a moment to
+            // be visible to getOwnedObjects after the tx is finalized.
+            for (let i = 0; i < 6; i++) {
+                await new Promise((r) => setTimeout(r, 2000));
+                if (!acct) break;
+                const id = await getUserBalanceManager(suiClient, acct.address);
+                if (id) { setManagerId(id); break; }
+            }
         } catch (e: any) {
             toast('error', 'Failed to create DeepBook account', e.message);
         } finally {
@@ -266,6 +280,102 @@ export default function TradeSidebar({ market }: Props) {
         setTimeout(refreshBalances, 3000);
     };
 
+    // ── Limit order ───────────────────────────────────────────────────
+    // Posts a resting order on the DeepBook book (the only way to create
+    // liquidity on a fresh market). Scaling is taken verbatim from the
+    // official @mysten/deepbook-v3 SDK:
+    //   inputPrice    = round(price * FLOAT_SCALAR * quoteScalar / baseScalar)
+    //   inputQuantity = round(qty * baseScalar)
+    // YES/NO base = 6 decimals (scalar 1e6), SUI quote = 9 (scalar 1e9),
+    // FLOAT_SCALAR = 1e9  →  inputPrice = price * 1e12, inputQty = qty * 1e6.
+    const handleLimitOrder = async () => {
+        if (!acct || !market || !managerId) return;
+        const poolId = outcome === 'yes' ? market.yesPoolId : market.noPoolId;
+        if (!poolId || /^0x0+$/.test(poolId)) return toast('error', 'Market pools not configured');
+        if (!market.tokenPackageId) return toast('error', 'Token package unknown');
+
+        const px = parseFloat(limitPrice);
+        const qty = numAmount; // shares (base)
+        if (!(px > 0) || !(qty > 0)) return toast('error', 'Enter a price and quantity');
+        if (px >= 1) return toast('error', 'Price must be between 0 and 1 (YES + NO = 1 SUI)');
+
+        const FLOAT_SCALAR = 1e9;
+        const baseScalar = 1e6;   // YES/NO 6-decimal
+        const quoteScalar = 1e9;  // SUI 9-decimal
+        const MAX_TIMESTAMP = 1844674407370955161n;
+
+        const inputPrice = BigInt(Math.round(px * FLOAT_SCALAR * quoteScalar / baseScalar));
+        const inputQuantity = BigInt(Math.round(qty * baseScalar));
+        const isBid = mode === 'buy';
+
+        const { baseCoinType, quoteCoinType } = await getPoolTypes(poolId);
+
+        const tx = new Transaction();
+        tx.setSender(acct.address);
+
+        // Collateralise the order in the BalanceManager:
+        //  - BID (buy):  deposit QUOTE (SUI) = price * qty
+        //  - ASK (sell): deposit BASE (qty YES/NO tokens)
+        if (isBid) {
+            const quoteMist = BigInt(Math.round(px * qty * 1e9));
+            const [c] = tx.splitCoins(tx.gas, [tx.pure.u64(quoteMist)]);
+            tx.moveCall({
+                target: `${testnetPackageIds.DEEPBOOK_PACKAGE_ID}::balance_manager::deposit`,
+                arguments: [tx.object(managerId), c],
+                typeArguments: [quoteCoinType],
+            });
+        } else {
+            const coins = await suiClient.getCoins({ owner: acct.address, coinType: baseCoinType });
+            if (coins.data.length === 0) return toast('error', `No ${outcome.toUpperCase()} tokens to post`);
+            const refs = coins.data.map(c => tx.object(c.coinObjectId));
+            const primary = refs[0];
+            if (refs.length > 1) tx.mergeCoins(primary, refs.slice(1));
+            const [baseIn] = tx.splitCoins(primary, [tx.pure.u64(inputQuantity)]);
+            tx.moveCall({
+                target: `${testnetPackageIds.DEEPBOOK_PACKAGE_ID}::balance_manager::deposit`,
+                arguments: [tx.object(managerId), baseIn],
+                typeArguments: [baseCoinType],
+            });
+        }
+
+        const tradeProof = tx.moveCall({
+            target: `${testnetPackageIds.DEEPBOOK_PACKAGE_ID}::balance_manager::generate_proof_as_owner`,
+            arguments: [tx.object(managerId)],
+        });
+
+        tx.moveCall({
+            target: `${testnetPackageIds.DEEPBOOK_PACKAGE_ID}::pool::place_limit_order`,
+            arguments: [
+                tx.object(poolId),
+                tx.object(managerId),
+                tradeProof,
+                tx.pure.u64(Date.now()),  // client_order_id
+                tx.pure.u8(0),            // order_type: NO_RESTRICTION (GTC)
+                tx.pure.u8(0),            // self_matching_option: ALLOWED
+                tx.pure.u64(inputPrice),
+                tx.pure.u64(inputQuantity),
+                tx.pure.bool(isBid),
+                tx.pure.bool(false),      // pay_with_deep=false (resting maker; no DEEP)
+                tx.pure.u64(MAX_TIMESTAMP),
+                tx.object('0x6'),         // clock
+            ],
+            typeArguments: [baseCoinType, quoteCoinType],
+        });
+        // NOTE: no withdraw_all — the deposited collateral must stay in the
+        // BalanceManager to back the resting order. Filled proceeds are
+        // reclaimed separately (idle-balance withdraw — separate feature).
+
+        await signAndExec({ transaction: tx });
+        toast(
+            'success',
+            `${isBid ? 'Bid' : 'Ask'} posted`,
+            `${qty} ${outcome.toUpperCase()} @ ${px} SUI — resting on the book`
+        );
+        setAmount('');
+        setLimitPrice('');
+        setTimeout(refreshBalances, 3000);
+    };
+
     const handleTrade = async () => {
         if (!acct) return toast('error', 'Connect your wallet first');
         if (!market) return;
@@ -275,6 +385,8 @@ export default function TradeSidebar({ market }: Props) {
         try {
             if (market.status === 'Resolved') {
                 await handleRedeem();
+            } else if (orderKind === 'limit') {
+                await handleLimitOrder();
             } else if (mode === 'buy') {
                 await handleBuy();
             } else {
@@ -316,6 +428,22 @@ export default function TradeSidebar({ market }: Props) {
                     </div>
                 )}
 
+                {/* Order kind: Limit (post a resting order) vs Market (take existing) */}
+                {!isResolved && (
+                    <div className="trade-mode-tabs" style={{ marginTop: 8 }}>
+                        <button
+                            className={`trade-mode-tab ${orderKind === 'limit' ? 'active' : ''}`}
+                            onClick={() => { setOrderKind('limit'); setAmount(''); }}
+                            title="Post a resting order at your price. Creates liquidity. Required on an empty book."
+                        >Limit</button>
+                        <button
+                            className={`trade-mode-tab ${orderKind === 'market' ? 'active' : ''}`}
+                            onClick={() => { setOrderKind('market'); setAmount(''); }}
+                            title="Fill instantly against existing orders. Does nothing if the book is empty."
+                        >Market</button>
+                    </div>
+                )}
+
                 {/* YES / NO pills */}
                 <div className="outcome-pills">
                     <div className={`outcome-pill yes ${outcome === 'yes' ? 'selected' : ''}`} onClick={() => { setOutcome('yes'); setAmount(''); }}>
@@ -330,15 +458,48 @@ export default function TradeSidebar({ market }: Props) {
                     </div>
                 </div>
 
+                {/* Limit price (limit orders only) */}
+                {!isResolved && orderKind === 'limit' && (
+                    <>
+                        <div className="amount-label-row">
+                            <span className="field-label">Price (SUI per share)</span>
+                            <span className="balance-hint">0 – 1 · YES+NO = 1</span>
+                        </div>
+                        <div className="amount-input-wrap">
+                            <span className="amount-input-symbol">SUI</span>
+                            <input
+                                className="amount-input"
+                                type="number"
+                                placeholder="0.50"
+                                value={limitPrice}
+                                onChange={e => setLimitPrice(e.target.value)}
+                                min="0"
+                                max="1"
+                                step="0.01"
+                            />
+                        </div>
+                    </>
+                )}
+
                 {/* Amount input */}
                 <div className="amount-label-row">
-                    <span className="field-label">{isResolved ? 'Tokens to Redeem' : mode === 'buy' ? 'Amount (SUI)' : 'Shares to Sell'}</span>
+                    <span className="field-label">
+                        {isResolved
+                            ? 'Tokens to Redeem'
+                            : orderKind === 'limit'
+                                ? 'Quantity (shares)'
+                                : mode === 'buy' ? 'Amount (SUI)' : 'Shares to Sell'}
+                    </span>
                     <span className="balance-hint">
                         Bal: {displayBalance > 0 ? displayBalance.toFixed(4) : '0'} {balLabel}
                     </span>
                 </div>
                 <div className="amount-input-wrap">
-                    <span className="amount-input-symbol">{mode === 'sell' && !isResolved ? 'SHARES' : 'SUI'}</span>
+                    <span className="amount-input-symbol">
+                        {orderKind === 'limit' && !isResolved
+                            ? 'SHARES'
+                            : mode === 'sell' && !isResolved ? 'SHARES' : 'SUI'}
+                    </span>
                     <input
                         className="amount-input"
                         type="number"
@@ -408,13 +569,15 @@ export default function TradeSidebar({ market }: Props) {
                     <button
                         className={`trade-cta ${outcome}`}
                         onClick={handleTrade}
-                        disabled={loading || !numAmount || !acct}
+                        disabled={loading || !numAmount || !acct || (orderKind === 'limit' && !isResolved && !(parseFloat(limitPrice) > 0))}
                     >
                         {loading
                             ? 'Submitting…'
                             : isResolved
                                 ? `Redeem ${outcome.toUpperCase()} Tokens`
-                                : `${mode === 'buy' ? 'Buy' : 'Sell'} ${outcome.toUpperCase()}`}
+                                : orderKind === 'limit'
+                                    ? `Post ${mode === 'buy' ? 'Bid' : 'Ask'} · ${outcome.toUpperCase()}`
+                                    : `${mode === 'buy' ? 'Buy' : 'Sell'} ${outcome.toUpperCase()}`}
                     </button>
                 )}
 
