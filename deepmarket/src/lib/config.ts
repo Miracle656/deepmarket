@@ -8,6 +8,11 @@ export const CONFIG = {
     ADMIN_CAP_OBJECT_ID: import.meta.env.VITE_ADMIN_CAP_ID as string,
     NETWORK: (import.meta.env.VITE_NETWORK ?? 'testnet') as 'testnet' | 'mainnet' | 'devnet',
 
+    // External docs site (Nextra). Override per-deploy via VITE_DOCS_URL.
+    DOCS_URL:
+        (import.meta.env.VITE_DOCS_URL as string | undefined) ??
+        'https://deepmarket-mqcl.vercel.app',
+
     // Sui SUI coin type
     SUI_TYPE: '0x2::sui::SUI',
 

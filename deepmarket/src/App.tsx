@@ -109,6 +109,16 @@ function AppInner() {
             {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
           </button>
           */}
+          <a
+            href={CONFIG.DOCS_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="nav-tab"
+            style={{ textDecoration: 'none' }}
+            title="Open documentation"
+          >
+            Docs ↗
+          </a>
           <div className="chain-badge">
             <div className="chain-dot" />
             Testnet
@@ -159,6 +169,15 @@ function AppInner() {
                   {t.charAt(0).toUpperCase() + t.slice(1)}
                 </NavLink>
               ))}
+              <a
+                href={CONFIG.DOCS_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mobile-drawer-link"
+                onClick={() => setMobileMenuOpen(false)}
+              >
+                Docs ↗
+              </a>
             </nav>
           </aside>
         </div>

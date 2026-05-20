@@ -3,6 +3,7 @@ import { AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { ConnectButton } from '@mysten/dapp-kit';
+import { CONFIG } from '../lib/config';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { ArrowRight, ExternalLink /* Sun, Moon — theme toggle commented out (dark-locked) */ } from 'lucide-react';
@@ -211,6 +212,14 @@ export default function LandingPage() {
                     >
                         Features
                     </button>
+                    <a
+                        href={CONFIG.DOCS_URL}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{ color: 'var(--text-secondary)', fontSize: '0.82rem', textDecoration: 'none', padding: '6px 8px' }}
+                    >
+                        Docs ↗
+                    </a>
                 </div>
 
                 {/* Theme toggle — commented out (site is dark-locked).
