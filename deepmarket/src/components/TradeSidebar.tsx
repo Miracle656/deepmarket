@@ -97,24 +97,43 @@ export default function TradeSidebar({ market }: Props) {
         return { baseCoinType: match[1], quoteCoinType: match[2] };
     };
 
-    const handleCreateManager = async () => {
-        if (!acct) return toast('error', 'Connect your wallet first');
+    // One-tap setup: create the BalanceManager (if needed) AND seed the
+    // DEEP price reference on both pools — the two one-time prerequisites
+    // a user otherwise had to do via separate buttons in the right order.
+    const handleEnableTrading = async () => {
+        if (!acct || !market) return toast('error', 'Connect your wallet first');
+        const isZero = (p?: string) => !p || /^0x0+$/.test(p);
         try {
             setLoading(true);
             const tx = new Transaction();
-            // DeepBook V3 `balance_manager::new(ctx): BalanceManager` — returns
-            // a fresh owned BalanceManager. The old `create_balance_manager`
-            // doesn't exist on the deployed package (FunctionNotFound).
-            // TxContext is auto-injected by Sui; no explicit args.
-            const manager = tx.moveCall({
-                target: `${testnetPackageIds.DEEPBOOK_PACKAGE_ID}::balance_manager::new`,
-                arguments: [],
-            });
-            tx.transferObjects([manager], acct.address);
+            tx.setSender(acct.address);
+
+            // 1. BalanceManager (skip if the wallet already has one).
+            if (!managerId) {
+                const mgr = tx.moveCall({
+                    target: `${testnetPackageIds.DEEPBOOK_PACKAGE_ID}::balance_manager::new`,
+                    arguments: [],
+                });
+                tx.transferObjects([mgr], acct.address);
+            }
+
+            // 2. DEEP price reference on each real pool so fees can be priced.
+            for (const poolId of [market.yesPoolId, market.noPoolId]) {
+                if (isZero(poolId)) continue;
+                const { baseCoinType, quoteCoinType } = await getPoolTypes(poolId);
+                tx.moveCall({
+                    target: `${testnetPackageIds.DEEPBOOK_PACKAGE_ID}::pool::add_deep_price_point`,
+                    arguments: [
+                        tx.object(poolId),
+                        tx.object(CONFIG.DEEP_SUI_REFERENCE_POOL_ID),
+                        tx.object('0x6'),
+                    ],
+                    typeArguments: [baseCoinType, quoteCoinType, CONFIG.DEEP_TOKEN_TYPE, CONFIG.SUI_TYPE],
+                });
+            }
+
             await signAndExec({ transaction: tx });
-            toast('success', 'DeepBook account created');
-            // Poll a few times — the new owned object can take a moment to
-            // be visible to getOwnedObjects after the tx is finalized.
+            toast('success', 'Trading enabled', 'Your account is set up and this market can price fees.');
             for (let i = 0; i < 6; i++) {
                 await new Promise((r) => setTimeout(r, 2000));
                 if (!acct) break;
@@ -122,7 +141,16 @@ export default function TradeSidebar({ market }: Props) {
                 if (id) { setManagerId(id); break; }
             }
         } catch (e: any) {
-            toast('error', 'Failed to create DeepBook account', e.message);
+            const msg = String(e?.message ?? '');
+            // EDataPointRecentlyAdded (code 1) — the DEEP price was already
+            // seeded moments ago. That means trading is effectively enabled.
+            if (/abort code: 1|DataPointRecentlyAdded/i.test(msg)) {
+                toast('success', 'Trading already enabled', 'This market is ready to trade.');
+                const id = await getUserBalanceManager(suiClient, acct.address);
+                if (id) setManagerId(id);
+            } else {
+                toast('error', 'Could not enable trading', msg || 'Unknown error');
+            }
         } finally {
             setLoading(false);
         }
@@ -715,11 +743,18 @@ export default function TradeSidebar({ market }: Props) {
                     )}
                 </div>
 
-                {/* CTA */}
+                {/* CTA — one-tap "Enable trading" until the account is set up,
+                    then the trade button. Hides the DeepBook plumbing. */}
                 {!managerId && !isResolved ? (
-                    <button className="trade-cta neutral" onClick={handleCreateManager} disabled={loading || !acct}>
-                        {loading ? 'Initializing…' : 'Initialize DeepBook Account'}
-                    </button>
+                    <>
+                        <button className="trade-cta neutral" onClick={handleEnableTrading} disabled={loading || !acct}>
+                            {loading ? 'Enabling…' : '⚡ Enable trading (one-time)'}
+                        </button>
+                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 6, lineHeight: 1.5 }}>
+                            One transaction sets up your trading account and lets
+                            this market price fees. After this, just Buy or Sell.
+                        </div>
+                    </>
                 ) : (
                     <button
                         className={`trade-cta ${outcome}`}
@@ -736,42 +771,39 @@ export default function TradeSidebar({ market }: Props) {
                     </button>
                 )}
 
-                {/* Pool-maintenance actions */}
+                {/* Advanced — de-emphasised power-user actions */}
                 {managerId && !isResolved && (
-                    <>
+                    <details style={{ marginTop: 10 }}>
+                        <summary style={{ cursor: 'pointer', color: 'var(--text-muted)', fontSize: '0.72rem', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+                            Advanced
+                        </summary>
                         <button
                             onClick={handleSyncDeepPrice}
                             disabled={loading}
                             style={{
                                 marginTop: 8, width: '100%', padding: '7px',
-                                background: 'transparent',
-                                border: '1px solid var(--blue, #1c6fff)',
-                                borderRadius: 6, cursor: 'pointer',
-                                color: 'var(--blue, #1c6fff)',
-                                fontSize: '0.75rem', fontWeight: 700,
-                                fontFamily: 'inherit', letterSpacing: '0.02em',
+                                background: 'transparent', border: '1px solid var(--border-base)',
+                                borderRadius: 6, cursor: 'pointer', color: 'var(--text-muted)',
+                                fontSize: '0.75rem', fontWeight: 600, fontFamily: 'inherit',
                             }}
-                            title="One-time per pool: import a DEEP/SUI conversion rate so this pool can compute fees. Required before the first limit order on a fresh pool."
+                            title="Re-import the DEEP/SUI rate for this pool (only needed if fees can't be priced)."
                         >
-                            Sync DEEP price · {outcome.toUpperCase()} pool (one-time)
+                            Re-sync DEEP price · {outcome.toUpperCase()} pool
                         </button>
                         <button
                             onClick={handleCancelAllOrders}
                             disabled={loading}
                             style={{
                                 marginTop: 6, width: '100%', padding: '7px',
-                                background: 'transparent',
-                                border: '1px solid var(--border-base)',
-                                borderRadius: 6, cursor: 'pointer',
-                                color: 'var(--text-muted)',
-                                fontSize: '0.75rem', fontWeight: 600,
-                                fontFamily: 'inherit', letterSpacing: '0.02em',
+                                background: 'transparent', border: '1px solid var(--border-base)',
+                                borderRadius: 6, cursor: 'pointer', color: 'var(--text-muted)',
+                                fontSize: '0.75rem', fontWeight: 600, fontFamily: 'inherit',
                             }}
                             title="Cancels every resting order this wallet has on the selected outcome's pool"
                         >
                             Cancel my open orders on {outcome.toUpperCase()} pool
                         </button>
-                    </>
+                    </details>
                 )}
 
                 <div className="trade-disclaimer">

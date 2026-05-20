@@ -1,0 +1,119 @@
+import { Callout, Steps } from 'nextra/components'
+
+# Trading Guide
+
+How to actually place a trade on a DeepBook-pool market, end to end. The
+underlying engine is a real on-chain central limit order book (DeepBook
+V3) — the UI hides the plumbing so you only deal with **Buy / Sell** and
+a **price**.
+
+<Callout type="info">
+Look for the badge on each market card. **`ORDER BOOK`** markets are
+tradeable (live DeepBook pools). **`MINT ONLY`** markets support just
+minting and redeeming — there's no order book to trade against.
+</Callout>
+
+## What you need
+
+- A Sui wallet (e.g. **Slush**) connected, with some **testnet SUI** for
+  gas and the trade itself.
+- A little **DEEP** — DeepBook charges trading fees in DEEP. The app
+  auto-deposits a small amount from your wallet on each order, so you just
+  need a few DEEP sitting in your wallet. Grab some from the DeepBook
+  testnet faucet if you have none.
+
+## Place your first trade
+
+<Steps>
+
+### Connect your wallet
+
+Top-right → Connect. Open any **`ORDER BOOK`** market.
+
+### Enable trading (one-time)
+
+The first time you trade a given market, click **⚡ Enable trading**. This
+single transaction:
+
+- Creates your DeepBook **BalanceManager** (your on-chain trading account), and
+- Seeds the market's pools with a **DEEP price reference** so fees can be
+  computed.
+
+You only do this once per market. After it confirms, the Buy/Sell form
+appears.
+
+### Choose Limit or Market
+
+- **Limit** — you post a resting order at *your* price. This is what
+  *adds* liquidity. On a brand-new market the book is empty, so the first
+  orders **must** be limit orders.
+- **Market** — fills instantly against orders already on the book. Does
+  nothing if the book is empty.
+
+<Callout type="warning">
+The active mode is the **solid-filled** button. If you try a Market order
+on an empty book it simply fills nothing — switch to Limit and post a
+price to seed the market.
+</Callout>
+
+### Pick a side and size
+
+- **YES** wins if the event happens; **NO** wins if it doesn't.
+- Price is in **SUI per share, 0–1** — and that *is* the implied
+  probability. `0.62` = the market pricing it at 62%. YES price + NO price
+  always sums to 1.
+- For a **Limit** order, enter a **price** and a **quantity (shares)**.
+  For a **Market** buy, enter an **amount of SUI**.
+
+### Submit
+
+Click **Buy / Sell** (market) or **Post Bid / Ask** (limit) and approve in
+your wallet. The app handles fee deposit and order-size rounding for you.
+
+</Steps>
+
+## Selling a side you don't own
+
+To *sell* YES (or NO) you must hold those tokens first. Two ways to get
+them:
+
+1. **Buy** them on the order book (a market or limit buy), or
+2. **Mint** a pair: click **Mint Tokens**, deposit `X` SUI, and receive
+   `X` YES **and** `X` NO. Then sell whichever side you don't want — that
+   nets you a position on the side you keep, funded by the sale.
+
+Minting is also how a market creator **seeds liquidity**: mint a pair,
+then post a YES ask *and* a NO ask so others have something to trade
+against.
+
+## Resolution & redeeming
+
+At the resolution time, the market is resolved to YES or NO. Open the
+market and click **Redeem** — the winning token pays out 1:1 in SUI from
+the vault; the losing token is worth nothing.
+
+## Advanced
+
+Under **Advanced** in the trade panel:
+
+- **Re-sync DEEP price** — only needed if a pool can't price fees (rare,
+  after long inactivity).
+- **Cancel my open orders** — cancels all your resting orders on the
+  selected outcome's pool and returns the locked collateral to your
+  BalanceManager.
+
+<Callout type="info">
+Funds you deposit to back a resting order (or that arrive from a fill)
+live in your DeepBook **BalanceManager** until you withdraw them. A
+withdraw UI is on the roadmap; for now, cancelling orders returns their
+collateral to the manager.
+</Callout>
+
+## Why an order book (vs. Polymarket)
+
+Most prediction markets run a **centralized, off-chain** matching engine —
+an operator you trust not to censor, freeze, or front-run. DeepMarket
+matches **fully on-chain via DeepBook V3**: every order and fill is public
+and verifiable, with no privileged operator. The tradeoff is that new
+markets need someone to post the first orders (no automatic market maker
+yet) — see the [roadmap](/reference/roadmap).
