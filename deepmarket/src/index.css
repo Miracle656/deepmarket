@@ -747,6 +747,77 @@ body {
   height: 36px;
 }
 
+/* ---- Order book ladder ---- */
+.ob {
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+}
+.ob-head {
+  display: flex;
+  justify-content: space-between;
+  padding: 4px 10px;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-bottom: 1px solid var(--border-base);
+}
+.ob-side {
+  display: flex;
+  flex-direction: column;
+}
+.ob-row {
+  position: relative;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 3px 10px;
+  overflow: hidden;
+}
+.ob-depth {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  opacity: 0.16;
+  pointer-events: none;
+}
+.ob-ask .ob-depth { background: var(--no); }
+.ob-bid .ob-depth { background: var(--yes); }
+.ob-ask .ob-price { color: var(--no); }
+.ob-bid .ob-price { color: var(--yes); }
+.ob-price,
+.ob-size {
+  position: relative;
+  z-index: 1;
+}
+.ob-size { color: var(--text-primary); }
+.ob-mid {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  font-weight: 700;
+  font-size: 0.95rem;
+  border-top: 1px solid var(--border-base);
+  border-bottom: 1px solid var(--border-base);
+}
+.ob-spread {
+  font-weight: 500;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+.ob-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 24px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
 .market-card-prices {
   display: flex;
   align-items: center;
