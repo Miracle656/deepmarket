@@ -26,8 +26,6 @@ export default function TvChart({ priceHistory, theme }: Props) {
     const borderColor = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)';
     const lineColorYes = isDark ? '#00e5a0' : '#009966';
     const areaTopYes = isDark ? 'rgba(0,229,160,0.22)' : 'rgba(0,153,102,0.14)';
-    const lineColorNo = isDark ? '#ff4d6a' : '#d92643';
-    const areaTopNo = isDark ? 'rgba(255,77,106,0.22)' : 'rgba(217,38,67,0.14)';
     const areaBottom = 'rgba(0,0,0,0)';
 
     useEffect(() => {
@@ -57,7 +55,7 @@ export default function TvChart({ priceHistory, theme }: Props) {
                 scaleMargins: { top: 0.1, bottom: 0.1 },
             },
             leftPriceScale: {
-                visible: true,
+                visible: false,
                 borderColor,
                 scaleMargins: { top: 0.1, bottom: 0.1 },
             },
@@ -96,19 +94,6 @@ export default function TvChart({ priceHistory, theme }: Props) {
             },
         });
 
-        const seriesNo = chart.addSeries(AreaSeries, {
-            lineColor: lineColorNo,
-            topColor: areaTopNo,
-            bottomColor: areaBottom,
-            lineWidth: 2,
-            priceScaleId: 'left',
-            priceFormat: {
-                type: 'custom',
-                formatter: (p: number) => `NO: ${p.toFixed(0)}%`,
-                minMove: 0.01,
-            },
-        });
-
         // lightweight-charts requires strictly ascending, unique timestamps.
         // Points can share a whole-second timestamp (e.g. a market's 50/50 seed
         // and its first fill landing in the same second). Nudge each colliding
@@ -126,13 +111,8 @@ export default function TvChart({ priceHistory, theme }: Props) {
             time: p.time as import('lightweight-charts').UTCTimestamp,
             value: p.value,
         }));
-        const noData = norm.map(p => ({
-            time: p.time as import('lightweight-charts').UTCTimestamp,
-            value: 100 - p.value,
-        }));
 
         seriesYes.setData(yesData);
-        seriesNo.setData(noData);
         chart.timeScale().fitContent();
 
         const ro = new ResizeObserver(() => {
