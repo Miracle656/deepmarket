@@ -215,6 +215,7 @@ impl DbStore {
         Ok(rows)
     }
 
+    #[allow(dead_code)] // kept as a handy pool→market lookup; not on the scan path
     pub async fn get_market_by_pool_id(&self, pool_id: &str) -> Result<Option<u64>> {
         let row: Option<(i64,)> = sqlx::query_as(
             "SELECT market_id FROM markets WHERE yes_pool_id = $1 OR no_pool_id = $1 LIMIT 1",
@@ -223,6 +224,35 @@ impl DbStore {
         .fetch_optional(&self.pg_pool)
         .await?;
         Ok(row.map(|(id,)| id as u64))
+    }
+
+    /// Every market that has at least one DeepBook pool, as
+    /// `(market_id, yes_pool_id, no_pool_id)`. Drives the per-pool fill scan.
+    pub async fn get_markets_with_pools(
+        &self,
+    ) -> Result<Vec<(i64, Option<String>, Option<String>)>> {
+        let rows: Vec<(i64, Option<String>, Option<String>)> = sqlx::query_as(
+            "SELECT market_id, yes_pool_id, no_pool_id FROM markets
+             WHERE (yes_pool_id IS NOT NULL AND yes_pool_id <> '')
+                OR (no_pool_id IS NOT NULL AND no_pool_id <> '')",
+        )
+        .fetch_all(&self.pg_pool)
+        .await?;
+        Ok(rows)
+    }
+
+    /// Per-pool transaction-scan cursor (a base58 TransactionDigest), kept in
+    /// Redis so the fill scan resumes incrementally across restarts.
+    pub async fn get_pool_cursor(&self, key: &str) -> Option<String> {
+        let mut conn = self.redis_conn.clone();
+        let v: Result<Option<String>, _> = conn.get(key).await;
+        v.ok().flatten()
+    }
+
+    pub async fn set_pool_cursor(&self, key: &str, val: &str) -> Result<()> {
+        let mut conn = self.redis_conn.clone();
+        let _: () = conn.set(key, val).await?;
+        Ok(())
     }
 
     pub async fn get_token_package_id(&self, market_id: u64) -> Result<Option<String>> {
