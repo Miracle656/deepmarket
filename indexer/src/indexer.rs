@@ -2,10 +2,16 @@ use crate::db::DbStore;
 use anyhow::Result;
 use serde::Deserialize;
 use std::collections::HashMap;
+use std::str::FromStr;
 use std::time::Duration;
-use sui_sdk::rpc_types::{EventFilter, SuiEvent};
+use sui_sdk::rpc_types::{EventFilter, SuiEvent, SuiObjectDataOptions};
+use sui_sdk::types::base_types::{ObjectID, SequenceNumber, SuiAddress};
 use sui_sdk::types::digests::TransactionDigest;
 use sui_sdk::types::event::EventID;
+use sui_sdk::types::object::Owner;
+use sui_sdk::types::programmable_transaction_builder::ProgrammableTransactionBuilder;
+use sui_sdk::types::transaction::{ObjectArg, SharedObjectMutability, TransactionKind};
+use sui_sdk::types::{Identifier, TypeTag};
 use sui_sdk::SuiClient;
 
 // DeepBook V3 emits OrderFilled as
@@ -14,6 +20,16 @@ use sui_sdk::SuiClient;
 // `pool` module.
 const DEEPBOOK_EVENT_PKG: &str =
     "0xfb28c4cbc6865bd1c897d26aecbe1f8792d1509a20ffec692c800660cbec6982";
+
+// Canonical DeepBook CALL package — moveCall / devInspect targets use THIS,
+// not the type-defining 0xfb28c4cb… package. (See memory deepbook_v3_quirks.)
+const DEEPBOOK_CALL_PKG: &str =
+    "0x22be4cade64bf2d02412c7e8d0e8beea2f78828b948118d46735315409371a3c";
+
+// Snapshot live pool mid-prices every N loop ticks (5s each → ~60s). This is
+// what gives the chart movement between fills: it records P(YES) as the order
+// book shifts, not only when a trade executes.
+const SNAPSHOT_EVERY_TICKS: u64 = 12;
 
 // Redis key holding the ascending cursor (`<digest>:<seq>`) into the global
 // DeepBook `order_info` event stream. Forward-only: seeded to the tip on the
@@ -93,6 +109,7 @@ pub async fn run_indexer(sui_client: SuiClient, db: DbStore) -> Result<()> {
     // Start from last processed checkpoint to avoid re-processing on restart
     let _last_cp = db.get_last_processed_checkpoint().await.unwrap_or(None);
 
+    let mut tick: u64 = 0;
     loop {
         // Poll our contract events
         let filter = EventFilter::MoveEventModule {
@@ -180,8 +197,126 @@ pub async fn run_indexer(sui_client: SuiClient, db: DbStore) -> Result<()> {
             eprintln!("DeepBook fill indexing failed: {e}");
         }
 
+        // Live mid-price snapshots — the chart's between-trades movement.
+        if tick % SNAPSHOT_EVERY_TICKS == 0 {
+            if let Err(e) = snapshot_pool_prices(&sui_client, &db).await {
+                eprintln!("Pool price snapshot failed: {e}");
+            }
+        }
+        tick = tick.wrapping_add(1);
+
         tokio::time::sleep(Duration::from_secs(5)).await;
     }
+}
+
+/// Record P(YES) for every market's YES pool from its live order-book mid,
+/// so the chart shows movement as the book shifts (not just on fills).
+async fn snapshot_pool_prices(sui_client: &SuiClient, db: &DbStore) -> Result<()> {
+    for (mid, yes, _no) in db.get_markets_with_pools().await? {
+        let Some(pool) = yes.filter(|s| is_real_pool(s)) else {
+            continue;
+        };
+        if let Some(yes_p) = pool_mid_yes_pct(sui_client, &pool).await {
+            db.save_price_point(mid as u64, yes_p, 100 - yes_p).await.ok();
+            println!("Snapshot: market={mid} pool={pool} yes%={yes_p}");
+        }
+        // None → one-sided/empty book or RPC hiccup: just skip this tick.
+    }
+    Ok(())
+}
+
+/// devInspect `pool::mid_price<Base, Quote>(pool, clock)` and return P(YES)%.
+/// Returns None when the book is one-sided (mid_price aborts) or on any RPC
+/// error — callers treat that as "no snapshot this tick".
+async fn pool_mid_yes_pct(sui_client: &SuiClient, pool_id: &str) -> Option<i32> {
+    let pool_obj: ObjectID = pool_id.parse().ok()?;
+
+    // The pool object's own type carries its <Base, Quote> generics and its
+    // shared-version — everything we need to build the call, no guessing of
+    // per-market token type names.
+    let resp = sui_client
+        .read_api()
+        .get_object_with_options(
+            pool_obj,
+            SuiObjectDataOptions::new().with_type().with_owner(),
+        )
+        .await
+        .ok()?;
+    let data = resp.data?;
+    let (base_tag, quote_tag) = parse_pool_type_args(&data.type_.as_ref()?.to_string())?;
+    let initial_shared_version = match data.owner? {
+        Owner::Shared {
+            initial_shared_version,
+        } => initial_shared_version,
+        _ => return None,
+    };
+
+    let mut ptb = ProgrammableTransactionBuilder::new();
+    let pool_arg = ptb
+        .obj(ObjectArg::SharedObject {
+            id: pool_obj,
+            initial_shared_version,
+            mutability: SharedObjectMutability::Immutable,
+        })
+        .ok()?;
+    let clock_arg = ptb
+        .obj(ObjectArg::SharedObject {
+            id: ObjectID::from_hex_literal("0x6").ok()?,
+            initial_shared_version: SequenceNumber::from_u64(1),
+            mutability: SharedObjectMutability::Immutable,
+        })
+        .ok()?;
+    ptb.programmable_move_call(
+        ObjectID::from_hex_literal(DEEPBOOK_CALL_PKG).ok()?,
+        Identifier::new("pool").ok()?,
+        Identifier::new("mid_price").ok()?,
+        vec![base_tag, quote_tag],
+        vec![pool_arg, clock_arg],
+    );
+    let tx_kind = TransactionKind::ProgrammableTransaction(ptb.finish());
+
+    let res = sui_client
+        .read_api()
+        .dev_inspect_transaction_block(SuiAddress::ZERO, tx_kind, None, None, None)
+        .await
+        .ok()?;
+    if res.error.is_some() {
+        return None; // mid_price aborts on a one-sided book
+    }
+    let (bytes, _tag) = res.results?.first()?.return_values.first()?.clone();
+    if bytes.len() < 8 {
+        return None;
+    }
+    // 1e9-scaled SUI per share → P(YES)%. mid / 1e9 * 100 = mid / 1e7.
+    let mid_raw = u64::from_le_bytes(bytes[..8].try_into().ok()?);
+    Some(((mid_raw / 10_000_000) as i32).clamp(0, 100))
+}
+
+/// Pull the two type arguments out of a DeepBook pool's type string,
+/// e.g. `…::pool::Pool<0x..::yes_token::YES_TOKEN, 0x2::sui::SUI>`.
+fn parse_pool_type_args(type_str: &str) -> Option<(TypeTag, TypeTag)> {
+    let lt = type_str.find('<')?;
+    let gt = type_str.rfind('>')?;
+    let inner = &type_str[lt + 1..gt];
+
+    // Split on the top-level comma (depth 0) so nested generics stay intact.
+    let mut depth = 0i32;
+    let mut comma = None;
+    for (i, c) in inner.char_indices() {
+        match c {
+            '<' => depth += 1,
+            '>' => depth -= 1,
+            ',' if depth == 0 => {
+                comma = Some(i);
+                break;
+            }
+            _ => {}
+        }
+    }
+    let i = comma?;
+    let base = TypeTag::from_str(inner[..i].trim()).ok()?;
+    let quote = TypeTag::from_str(inner[i + 1..].trim()).ok()?;
+    Some((base, quote))
 }
 
 /// Ingest DeepBook `OrderFilled` events into fills / price history / volume:
