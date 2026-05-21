@@ -13,6 +13,7 @@ import PortfolioPage from './components/PortfolioPage';
 import PredictPage from './components/PredictPage';
 import PredictDetailPage from './components/PredictDetailPage';
 import AgentAuthorizePage from './components/AgentAuthorizePage';
+import Sparkline from './components/Sparkline';
 // rippleThemeToggle import removed — light mode is disabled in production.
 // Re-add when the toggle button is uncommented in the nav.
 
@@ -302,6 +303,10 @@ function AppInner() {
                             </div>
                           </div>
                           <div className="market-card-question">{m.question}</div>
+
+                          <div className="market-card-spark">
+                            <Sparkline marketId={m.id} current={m.yesPrice} />
+                          </div>
 
                           <div className="market-card-prices">
                             <div className="market-card-btn yes">

@@ -109,11 +109,24 @@ export default function TvChart({ priceHistory, theme }: Props) {
             },
         });
 
-        const yesData = priceHistory.map(p => ({
+        // lightweight-charts requires strictly ascending, unique timestamps.
+        // Points can share a whole-second timestamp (e.g. a market's 50/50 seed
+        // and its first fill landing in the same second). Nudge each colliding
+        // point one second forward so the real movement is preserved rather
+        // than collapsed to a flat line.
+        const sorted = [...priceHistory].sort((a, b) => a.time - b.time);
+        let lastT = -Infinity;
+        const norm = sorted.map(p => {
+            const t = p.time <= lastT ? lastT + 1 : p.time;
+            lastT = t;
+            return { time: t, value: p.value };
+        });
+
+        const yesData = norm.map(p => ({
             time: p.time as import('lightweight-charts').UTCTimestamp,
             value: p.value,
         }));
-        const noData = priceHistory.map(p => ({
+        const noData = norm.map(p => ({
             time: p.time as import('lightweight-charts').UTCTimestamp,
             value: 100 - p.value,
         }));
