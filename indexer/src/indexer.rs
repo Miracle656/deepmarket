@@ -288,8 +288,9 @@ async fn pool_mid_yes_pct(sui_client: &SuiClient, pool_id: &str) -> Option<i32> 
         return None;
     }
     // 1e9-scaled SUI per share → P(YES)%. mid / 1e9 * 100 = mid / 1e7.
+    // Round (not truncate) to match the frontend's live mid display.
     let mid_raw = u64::from_le_bytes(bytes[..8].try_into().ok()?);
-    Some(((mid_raw / 10_000_000) as i32).clamp(0, 100))
+    Some(((mid_raw as f64 / 1e7).round() as i32).clamp(0, 100))
 }
 
 /// Pull the two type arguments out of a DeepBook pool's type string,
@@ -476,8 +477,9 @@ async fn process_fill_event(
     }
 
     // price is 1e9-scaled SUI-per-share; for a YES/SUI pool that IS P(YES).
-    // yes% = price / 1e9 * 100 = price / 1e7.
-    let yes_p = ((price_raw / 10_000_000) as i32).clamp(0, 100);
+    // yes% = price / 1e9 * 100 = price / 1e7. Round (not truncate) so it
+    // matches the frontend's live mid display.
+    let yes_p = ((price_raw as f64 / 1e7).round() as i32).clamp(0, 100);
     let tx_digest = event.id.tx_digest.to_string();
     let order_id = fill.taker_order_id.as_deref().unwrap_or(&tx_digest);
 
