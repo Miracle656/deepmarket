@@ -328,6 +328,77 @@ export async function getUnsettledExposedOracles(
 }
 
 // ──────────────────────────────────────────────────────────────────────────
+// Trade tape — per-oracle mint/redeem feed (/trades/:oracleId)
+// ──────────────────────────────────────────────────────────────────────────
+
+const PRICE_SCALE = 1e9;
+const QTY_SCALE = 10 ** CONFIG.DUSDC_DECIMALS; // dUSDC base units (1e6)
+
+interface RawTrade {
+    type: 'mint' | 'redeem';
+    digest: string;
+    checkpoint_timestamp_ms: number;
+    trader?: string;
+    owner?: string;
+    quantity: number;
+    strike?: number;
+    is_up?: boolean;
+    lower_strike?: number;
+    higher_strike?: number;
+    cost?: number;
+    ask_price?: number;
+    payout?: number;
+    bid_price?: number;
+}
+
+export interface TradeTapeEntry {
+    kind: 'binary' | 'range';
+    side: 'mint' | 'redeem';
+    timestampMs: number;
+    txDigest: string;
+    trader: string;
+    quantity: number;
+    strike?: number;
+    isUp?: boolean;
+    lowerStrike?: number;
+    higherStrike?: number;
+    cost?: number; // mint
+    askPrice?: number; // mint (0..1 = ¢)
+    payout?: number; // redeem
+    bidPrice?: number; // redeem
+}
+
+export async function getOracleTrades(
+    oracleId: string,
+    limit = 50
+): Promise<TradeTapeEntry[]> {
+    const raw = await fetchJson<RawTrade[]>(`/trades/${oracleId}?limit=${limit}`);
+    return raw.map((r) => {
+        const isRange = r.lower_strike != null;
+        const base = {
+            kind: (isRange ? 'range' : 'binary') as 'binary' | 'range',
+            side: r.type,
+            timestampMs: r.checkpoint_timestamp_ms,
+            txDigest: r.digest,
+            trader: r.trader ?? r.owner ?? '',
+            quantity: r.quantity / QTY_SCALE,
+        };
+        const priceFields =
+            r.type === 'mint'
+                ? { cost: (r.cost ?? 0) / QTY_SCALE, askPrice: (r.ask_price ?? 0) / PRICE_SCALE }
+                : { payout: (r.payout ?? 0) / QTY_SCALE, bidPrice: (r.bid_price ?? 0) / PRICE_SCALE };
+        return isRange
+            ? {
+                  ...base,
+                  lowerStrike: (r.lower_strike ?? 0) / PRICE_SCALE,
+                  higherStrike: (r.higher_strike ?? 0) / PRICE_SCALE,
+                  ...priceFields,
+              }
+            : { ...base, strike: (r.strike ?? 0) / PRICE_SCALE, isUp: r.is_up, ...priceFields };
+    });
+}
+
+// ──────────────────────────────────────────────────────────────────────────
 // Formatting helpers
 // ──────────────────────────────────────────────────────────────────────────
 

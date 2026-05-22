@@ -57,6 +57,9 @@ import {
 } from '../lib/predict-tx';
 import { CONFIG } from '../lib/config';
 import PredictChart from './PredictChart';
+import VolSurfaceChart from './VolSurfaceChart';
+import CandleChart from './CandleChart';
+import TradeTape from './TradeTape';
 
 const FLOAT_SCALING = 1_000_000_000n;
 const STRIKE_RADIUS = 5; // show ±5 ticks around the rounded spot
@@ -79,6 +82,9 @@ export default function PredictDetailPage({ theme }: PredictDetailPageProps) {
     const [managerId, setManagerId] = useState<string | null>(null);
     const [manager, setManager] = useState<ManagerSummary | null>(null);
     const [positions, setPositions] = useState<Position[]>([]);
+
+    // chart view: price line / SVI vol smile / candles / trade tape
+    const [chartView, setChartView] = useState<'price' | 'smile' | 'candles' | 'trades'>('price');
 
     // user inputs
     const [mode, setMode] = useState<'binary' | 'range'>('binary');
@@ -479,20 +485,47 @@ export default function PredictDetailPage({ theme }: PredictDetailPageProps) {
                             {state.oracle.status}
                         </div>
 
-                        <div style={{ marginTop: 20 }}>
-                            <PredictChart
-                                oracleId={state.oracle.oracle_id}
-                                theme={theme}
-                                mode={mode}
-                                selectedStrike={selectedStrike}
-                                isUp={isUp}
-                                lowerStrike={lowerStrike}
-                                higherStrike={higherStrike}
-                                settlementPrice={
-                                    state.oracle.settlement_price ?? null
-                                }
-                                expiry={state.oracle.expiry}
-                            />
+                        <div className="pchart-tabs" style={{ marginTop: 20 }}>
+                            {([
+                                ['price', 'Price'],
+                                ['smile', 'Vol Smile'],
+                                ['candles', 'Candles'],
+                                ['trades', 'Trades'],
+                            ] as const).map(([k, label]) => (
+                                <button
+                                    key={k}
+                                    className={`pchart-tab ${chartView === k ? 'active' : ''}`}
+                                    onClick={() => setChartView(k)}
+                                >
+                                    {label}
+                                </button>
+                            ))}
+                        </div>
+
+                        <div style={{ marginTop: 12 }}>
+                            {chartView === 'price' && (
+                                <PredictChart
+                                    oracleId={state.oracle.oracle_id}
+                                    theme={theme}
+                                    mode={mode}
+                                    selectedStrike={selectedStrike}
+                                    isUp={isUp}
+                                    lowerStrike={lowerStrike}
+                                    higherStrike={higherStrike}
+                                    settlementPrice={state.oracle.settlement_price ?? null}
+                                    expiry={state.oracle.expiry}
+                                />
+                            )}
+                            {chartView === 'smile' && <VolSurfaceChart state={state} />}
+                            {chartView === 'candles' && (
+                                <CandleChart
+                                    symbol={state.oracle.underlying_asset || 'BTC'}
+                                    theme={theme}
+                                />
+                            )}
+                            {chartView === 'trades' && (
+                                <TradeTape oracleId={state.oracle.oracle_id} />
+                            )}
                         </div>
 
                         <div className="predict-stats" style={{ marginTop: 24 }}>

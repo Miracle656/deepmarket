@@ -953,6 +953,116 @@ body {
   word-break: break-word;
 }
 
+/* ---- Predict detail chart tabs ---- */
+.pchart-tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--border-base);
+}
+.pchart-tab {
+  padding: 8px 14px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-muted);
+  font-weight: 600;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+.pchart-tab.active {
+  color: var(--yes);
+  border-bottom-color: var(--yes);
+}
+
+/* ---- Vol surface ---- */
+.vs {
+  border: 1px solid var(--border-base);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.vs-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 240px;
+  padding: 24px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  background: var(--bg-elevated, rgba(255, 255, 255, 0.02));
+  border-radius: 12px;
+}
+.vs-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border-base);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  font-variant-numeric: tabular-nums;
+}
+.vs-seg {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+}
+.vs-seg-accent { color: var(--yes); font-weight: 700; }
+.vs-seg-label { color: var(--text-muted); }
+.vs-seg-value { color: var(--text-primary); font-weight: 600; }
+.vs-sep { color: var(--text-muted); }
+.vs-svg {
+  width: 100%;
+  height: 300px;
+  display: block;
+  padding: 8px 0;
+}
+.vs-foot {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 14px;
+  border-top: 1px solid var(--border-base);
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
+/* ---- Trade tape ---- */
+.tape {
+  border: 1px solid var(--border-base);
+  border-radius: 12px;
+  font-size: 0.82rem;
+  font-variant-numeric: tabular-nums;
+}
+.tape-head,
+.tape-row {
+  display: grid;
+  grid-template-columns: 0.7fr 1.6fr 0.7fr 0.6fr 0.9fr 0.5fr;
+  gap: 8px;
+  padding: 7px 14px;
+  align-items: center;
+}
+.tape-head {
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  border-bottom: 1px solid var(--border-base);
+}
+.tape-body {
+  max-height: 320px;
+  overflow-y: auto;
+}
+.tape-row {
+  border-bottom: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.03));
+}
+.tape-buy { color: var(--yes); font-weight: 700; }
+.tape-sell { color: var(--no); font-weight: 700; }
+.tape-inst { color: var(--text-primary); }
+.tape-trader,
+.tape-age { color: var(--text-muted); }
+
 .market-card-prices {
   display: flex;
   align-items: center;
