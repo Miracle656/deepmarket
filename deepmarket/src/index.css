@@ -818,6 +818,136 @@ body {
   font-size: 0.85rem;
 }
 
+/* ---- Predict vault / Earn panel ---- */
+.vault-panel {
+  margin-top: 20px;
+  padding: 18px 20px;
+  border: 1px solid var(--border-base);
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgba(0, 229, 160, 0.04), rgba(0, 0, 0, 0));
+}
+.vault-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.vault-sub {
+  margin: 8px 0 16px;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  line-height: 1.5;
+  max-width: 640px;
+}
+.vault-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.vault-stat {
+  padding: 12px 14px;
+  border: 1px solid var(--border-base);
+  border-radius: 10px;
+  background: var(--bg-elevated, rgba(255, 255, 255, 0.02));
+}
+.vault-stat-label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+.vault-stat-value {
+  margin-top: 4px;
+  font-size: 1.15rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+.vault-yours {
+  padding: 12px 14px;
+  border: 1px solid var(--border-base);
+  border-radius: 10px;
+  margin-bottom: 16px;
+}
+.vault-yours-h {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+.vault-yours-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  font-size: 1.1rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.vault-muted {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  font-weight: 500;
+}
+.vault-tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+.vault-tab {
+  flex: 1;
+  padding: 8px;
+  border: 1px solid var(--border-base);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-muted);
+  font-weight: 600;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+.vault-tab.active {
+  border-color: var(--yes-border, var(--yes));
+  color: var(--yes);
+  background: var(--yes-dim, rgba(0, 229, 160, 0.08));
+}
+.vault-input-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.vault-input-row .input {
+  flex: 1;
+}
+.vault-ccy {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+.vault-avail {
+  margin-top: 6px;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+.vault-note {
+  margin-top: 8px;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+.vault-ok {
+  margin-top: 8px;
+  font-size: 0.82rem;
+  color: var(--yes);
+}
+.vault-err {
+  margin-top: 8px;
+  font-size: 0.82rem;
+  color: var(--no);
+  word-break: break-word;
+}
+
 .market-card-prices {
   display: flex;
   align-items: center;

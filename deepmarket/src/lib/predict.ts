@@ -5,7 +5,14 @@
 // Use Sui RPC for confirmation-critical reads around wallet flows.
 
 import type { SuiObjectChange } from '@mysten/sui/jsonRpc';
+import { Transaction } from '@mysten/sui/transactions';
+import { bcs } from '@mysten/sui/bcs';
+import type { useSuiClient } from '@mysten/dapp-kit';
 import { CONFIG } from './config';
+
+type SuiClient = ReturnType<typeof useSuiClient>;
+const ZERO_ADDR =
+    '0x0000000000000000000000000000000000000000000000000000000000000000';
 
 // ──────────────────────────────────────────────────────────────────────────
 // Types
@@ -193,6 +200,131 @@ export async function findAllManagersByOwner(address: string): Promise<string[]>
 
 export async function getVaultSummary(): Promise<unknown> {
     return fetchJson(`/predicts/${CONFIG.PREDICT_OBJECT_ID}/vault/summary`);
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// LP vault — on-chain reads (the LP/maker side of Predict)
+// ──────────────────────────────────────────────────────────────────────────
+
+export interface VaultStats {
+    /** Total dUSDC held by the vault (human). */
+    tvl: number;
+    /** Net asset value = balance − holders' mark-to-market (human). */
+    vaultValue: number;
+    /** Outstanding max payout the vault is on the hook for (human). */
+    totalMaxPayout: number;
+    /** Withdrawable headroom = balance − max payout (human). */
+    available: number;
+    /** Total PLP shares minted (raw). */
+    totalShares: number;
+    /** vaultValue in raw base units — used to value LP shares precisely. */
+    vaultValueRaw: number;
+}
+
+/**
+ * Read the Predict vault's live state straight from the shared object +
+ * PLP total supply. No server, no devInspect — just getObject/getTotalSupply.
+ */
+type PredictContent = {
+    fields?: {
+        vault?: { fields?: Record<string, string> };
+        treasury_cap?: {
+            fields?: { total_supply?: { fields?: { value?: string } } };
+        };
+    };
+};
+
+export async function getVaultStats(client: SuiClient): Promise<VaultStats | null> {
+    try {
+        // PLP's TreasuryCap is wrapped inside the Predict object, so
+        // suix_getTotalSupply can't see it — read both vault state AND total
+        // shares from the one shared object.
+        const obj = await client.getObject({
+            id: CONFIG.PREDICT_OBJECT_ID,
+            options: { showContent: true },
+        });
+        const content = obj.data?.content as PredictContent | undefined;
+        const v = content?.fields?.vault?.fields;
+        if (!v) return null;
+
+        const balance = Number(v.balance ?? 0);
+        const mtm = Number(v.total_mtm ?? 0);
+        const maxPayout = Number(v.total_max_payout ?? 0);
+        const totalShares = Number(
+            content?.fields?.treasury_cap?.fields?.total_supply?.fields?.value ?? 0
+        );
+        const D = 10 ** CONFIG.DUSDC_DECIMALS;
+        const vaultValueRaw = Math.max(0, balance - mtm);
+
+        return {
+            tvl: balance / D,
+            vaultValue: vaultValueRaw / D,
+            totalMaxPayout: maxPayout / D,
+            available: Math.max(0, balance - maxPayout) / D,
+            totalShares,
+            vaultValueRaw,
+        };
+    } catch {
+        return null;
+    }
+}
+
+export interface LpPosition {
+    /** PLP shares held (raw base units). */
+    shares: number;
+    /** Current redeemable value in dUSDC (human). */
+    valueUsd: number;
+}
+
+/** The caller's LP position: PLP balance valued at the current share price. */
+export async function getLpPosition(
+    client: SuiClient,
+    address: string,
+    stats?: VaultStats | null
+): Promise<LpPosition> {
+    try {
+        const bal = await client.getBalance({
+            owner: address,
+            coinType: CONFIG.PREDICT_PLP_TYPE,
+        });
+        const shares = Number(bal.totalBalance);
+        if (shares === 0) return { shares: 0, valueUsd: 0 };
+
+        const s = stats ?? (await getVaultStats(client));
+        if (!s || s.totalShares === 0) return { shares, valueUsd: 0 };
+
+        const valueUsd =
+            (shares * s.vaultValueRaw) / s.totalShares / 10 ** CONFIG.DUSDC_DECIMALS;
+        return { shares, valueUsd };
+    } catch {
+        return { shares: 0, valueUsd: 0 };
+    }
+}
+
+/**
+ * Oracle IDs the vault is currently exposed to and that aren't settled —
+ * `supply`/`withdraw` need each one's mark-to-market refreshed first. Read via
+ * devInspect of `predict::unsettled_exposed_oracles`.
+ */
+export async function getUnsettledExposedOracles(
+    client: SuiClient
+): Promise<string[]> {
+    try {
+        const tx = new Transaction();
+        tx.moveCall({
+            target: `${CONFIG.PREDICT_PACKAGE_ID}::predict::unsettled_exposed_oracles`,
+            arguments: [tx.object(CONFIG.PREDICT_OBJECT_ID)],
+        });
+        const r = await client.devInspectTransactionBlock({
+            sender: ZERO_ADDR,
+            transactionBlock: tx,
+        });
+        const bytes = r.results?.[0]?.returnValues?.[0]?.[0];
+        if (!bytes) return [];
+        return bcs.vector(bcs.Address).parse(new Uint8Array(bytes)) as string[];
+    } catch {
+        return [];
+    }
 }
 
 // ──────────────────────────────────────────────────────────────────────────

@@ -188,6 +188,68 @@ export function buildPreviewTx(args: {
 }
 
 // ──────────────────────────────────────────────────────────────────────────
+// LP vault — be the liquidity provider, not just the taker.
+//
+// supply<Quote>(predict, coin, clock) -> Coin<PLP>   (deposit, mint LP shares)
+// withdraw<Quote>(predict, lp_coin, clock) -> Coin<Quote>  (burn shares, cash out)
+//
+// Both assert the vault's mark-to-market is fresh (assert_total_mtm_fresh), so
+// each call is preceded by refresh_oracle_mtm for the currently-exposed LIVE
+// oracles. Caller passes that list (read from unsettled_exposed_oracles, then
+// filtered to oracles that are still live — refresh_oracle_mtm aborts on an
+// expired-but-unsettled oracle).
+// ──────────────────────────────────────────────────────────────────────────
+
+const PLP = CONFIG.PREDICT_PLP_TYPE;
+
+function refreshExposedOracles(tx: Transaction, oracleIds: string[]) {
+    for (const oid of oracleIds) {
+        tx.moveCall({
+            target: `${PKG}::predict::refresh_oracle_mtm`,
+            arguments: [tx.object(PREDICT), tx.object(oid), tx.object(CONFIG.CLOCK)],
+        });
+    }
+}
+
+/** Supply dUSDC into the Predict vault; the minted PLP shares go to `sender`. */
+export function buildSupplyTx(
+    amount: bigint,
+    sender: string,
+    refreshOracleIds: string[] = []
+): Transaction {
+    const tx = new Transaction();
+    refreshExposedOracles(tx, refreshOracleIds);
+
+    const coin = tx.add(coinWithBalance({ balance: amount, type: DUSDC }));
+    const plp = tx.moveCall({
+        target: `${PKG}::predict::supply`,
+        typeArguments: [DUSDC],
+        arguments: [tx.object(PREDICT), coin, tx.object(CONFIG.CLOCK)],
+    });
+    tx.transferObjects([plp], tx.pure.address(sender));
+    return tx;
+}
+
+/** Burn `plpAmount` PLP shares and send the redeemed dUSDC to `sender`. */
+export function buildWithdrawLpTx(
+    plpAmount: bigint,
+    sender: string,
+    refreshOracleIds: string[] = []
+): Transaction {
+    const tx = new Transaction();
+    refreshExposedOracles(tx, refreshOracleIds);
+
+    const lpCoin = tx.add(coinWithBalance({ balance: plpAmount, type: PLP }));
+    const out = tx.moveCall({
+        target: `${PKG}::predict::withdraw`,
+        typeArguments: [DUSDC],
+        arguments: [tx.object(PREDICT), lpCoin, tx.object(CONFIG.CLOCK)],
+    });
+    tx.transferObjects([out], tx.pure.address(sender));
+    return tx;
+}
+
+// ──────────────────────────────────────────────────────────────────────────
 // Range positions — vertical bands priced as a single instrument.
 // Pays $1·qty if settlement lands in the half-open band (lower, higher].
 // ──────────────────────────────────────────────────────────────────────────
