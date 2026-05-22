@@ -13,7 +13,6 @@ import {
     statusColor,
     type OracleSummary,
 } from '../lib/predict';
-import VaultPanel from './VaultPanel';
 
 export default function PredictPage() {
     const navigate = useNavigate();
@@ -68,8 +67,6 @@ export default function PredictPage() {
                     Refresh
                 </button>
             </div>
-
-            <VaultPanel />
 
             {error && (
                 <div className="alert alert-error" style={{ marginTop: 16 }}>

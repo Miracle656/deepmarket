@@ -819,8 +819,13 @@ body {
 }
 
 /* ---- Predict vault / Earn panel ---- */
+.vault-view {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 28px 20px 48px;
+}
 .vault-panel {
-  margin-top: 20px;
+  margin-top: 16px;
   padding: 18px 20px;
   border: 1px solid var(--border-base);
   border-radius: 14px;

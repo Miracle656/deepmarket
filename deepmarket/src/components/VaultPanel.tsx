@@ -10,7 +10,7 @@ import {
     useSuiClient,
     useSignAndExecuteTransaction,
 } from '@mysten/dapp-kit';
-import { Layers, RefreshCw, TrendingUp } from 'lucide-react';
+import { RefreshCw, TrendingUp } from 'lucide-react';
 import { CONFIG } from '../lib/config';
 import {
     getVaultStats,
@@ -158,23 +158,15 @@ export default function VaultPanel() {
     return (
         <div className="vault-panel">
             <div className="vault-head">
-                <div className="predict-eyebrow">
-                    <Layers size={14} />
-                    <span>Predict Vault · Provide Liquidity</span>
-                </div>
                 <button
                     className="btn btn-ghost btn-sm"
                     onClick={load}
-                    style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+                    title="Refresh vault stats"
+                    style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 'auto' }}
                 >
                     <RefreshCw size={13} />
                 </button>
             </div>
-
-            <p className="vault-sub">
-                Supply dUSDC to back every binary &amp; range position taken on Predict — you
-                earn the premiums takers pay. Shares (PLP) accrue value as the vault profits.
-            </p>
 
             {/* Vault stats */}
             <div className="vault-stats">
