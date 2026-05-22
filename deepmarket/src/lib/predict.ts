@@ -399,6 +399,85 @@ export async function getOracleTrades(
 }
 
 // ──────────────────────────────────────────────────────────────────────────
+// Manager PnL time series (/managers/:id/pnl) + leaderboard (/managers)
+// ──────────────────────────────────────────────────────────────────────────
+
+interface RawPnl {
+    points?: {
+        timestamp_ms: number;
+        realized_pnl: number;
+        cumulative_realized_pnl: number;
+    }[];
+    current_unrealized_pnl?: number;
+    current_total_pnl?: number;
+}
+
+export interface PnlPoint {
+    timestampMs: number;
+    realizedPnl: number;
+    cumulativeRealizedPnl: number;
+}
+
+export interface PnlSeries {
+    points: PnlPoint[];
+    currentUnrealizedPnl: number;
+    currentTotalPnl: number;
+}
+
+export type PnlRange = '1D' | '1W' | '1M' | '3M' | 'ALL';
+
+export async function getManagerPnl(
+    managerId: string,
+    range: PnlRange = 'ALL'
+): Promise<PnlSeries> {
+    const r = await fetchJson<RawPnl>(`/managers/${managerId}/pnl?range=${range}`);
+    return {
+        points: (r.points ?? []).map((p) => ({
+            timestampMs: p.timestamp_ms,
+            realizedPnl: p.realized_pnl / QTY_SCALE,
+            cumulativeRealizedPnl: p.cumulative_realized_pnl / QTY_SCALE,
+        })),
+        currentUnrealizedPnl: (r.current_unrealized_pnl ?? 0) / QTY_SCALE,
+        currentTotalPnl: (r.current_total_pnl ?? 0) / QTY_SCALE,
+    };
+}
+
+export interface LeaderboardRow {
+    managerId: string;
+    owner: string;
+    realizedPnl: number;
+    unrealizedPnl: number;
+    accountValue: number;
+    openPositions: number;
+}
+
+/**
+ * Settlement leaderboard — managers ranked by realized PnL. The /managers list
+ * has no PnL, so we fetch summaries for up to `maxManagers` (newest) and rank.
+ */
+export async function getLeaderboard(maxManagers = 60): Promise<LeaderboardRow[]> {
+    const managers = await fetchJson<ManagerListEntry[]>(`/managers`);
+    const slice = managers.slice(0, maxManagers);
+    const summaries = await Promise.all(
+        slice.map((m) => getManagerSummary(m.manager_id).catch(() => null))
+    );
+    const rows: LeaderboardRow[] = [];
+    for (const s of summaries) {
+        if (!s) continue;
+        rows.push({
+            managerId: s.manager_id,
+            owner: s.owner,
+            realizedPnl: s.realized_pnl / QTY_SCALE,
+            unrealizedPnl: s.unrealized_pnl / QTY_SCALE,
+            accountValue: s.account_value / QTY_SCALE,
+            openPositions: s.open_positions,
+        });
+    }
+    rows.sort((a, b) => b.realizedPnl - a.realizedPnl);
+    return rows;
+}
+
+// ──────────────────────────────────────────────────────────────────────────
 // Formatting helpers
 // ──────────────────────────────────────────────────────────────────────────
 

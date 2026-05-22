@@ -31,6 +31,7 @@ import {
     type Position,
 } from '../lib/predict';
 import { buildWithdrawTx } from '../lib/predict-tx';
+import PnlChart from './PnlChart';
 
 interface SpotPosition {
     market: Market;
@@ -392,6 +393,10 @@ export default function PortfolioPage({ markets }: Props) {
                             {withdrawMsg}
                         </div>
                     )}
+
+                    <div style={{ marginBottom: 20 }}>
+                        <PnlChart managerId={managerId} theme="dark" />
+                    </div>
 
                     {predictLoading && openPredictPositions.length === 0 && (
                         <div

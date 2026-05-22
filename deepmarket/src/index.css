@@ -1063,6 +1063,68 @@ body {
 .tape-trader,
 .tape-age { color: var(--text-muted); }
 
+/* ---- PnL chart ---- */
+.pnl-stats {
+  display: flex;
+  gap: 24px;
+  margin-bottom: 12px;
+}
+.pnl-stat-label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+.pnl-stat-value {
+  margin-top: 2px;
+  font-size: 1.05rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- Leaderboard ---- */
+.lb-page {
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 24px 20px 48px;
+}
+.lb-table {
+  margin-top: 16px;
+  border: 1px solid var(--border-base);
+  border-radius: 12px;
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+}
+.lb-head,
+.lb-row {
+  display: grid;
+  grid-template-columns: 0.4fr 1.2fr 1.2fr 1fr 1fr 0.5fr;
+  gap: 10px;
+  padding: 9px 16px;
+  align-items: center;
+}
+.lb-head {
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  border-bottom: 1px solid var(--border-base);
+}
+.lb-row {
+  border-bottom: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.03));
+}
+.lb-mine {
+  background: var(--yes-dim, rgba(0, 229, 160, 0.06));
+}
+.lb-rank {
+  color: var(--text-muted);
+  font-weight: 700;
+}
+.lb-mono {
+  font-family: monospace;
+  font-size: 0.8rem;
+}
+
 .market-card-prices {
   display: flex;
   align-items: center;

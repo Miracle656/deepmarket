@@ -14,6 +14,7 @@ import PredictPage from './components/PredictPage';
 import PredictDetailPage from './components/PredictDetailPage';
 import AgentAuthorizePage from './components/AgentAuthorizePage';
 import VaultView from './components/VaultView';
+import LeaderboardPage from './components/LeaderboardPage';
 import Sparkline from './components/Sparkline';
 // rippleThemeToggle import removed — light mode is disabled in production.
 // Re-add when the toggle button is uncommented in the nav.
@@ -86,7 +87,7 @@ function AppInner() {
         </button>
 
         <div className="nav-tabs">
-          {(['markets', 'predict', 'vault', 'portfolio', 'agent', 'about'] as const).map(t => (
+          {(['markets', 'predict', 'vault', 'leaderboard', 'portfolio', 'agent', 'about'] as const).map(t => (
             <NavLink
               key={t}
               to={`/${t}`}
@@ -159,7 +160,7 @@ function AppInner() {
               </button>
             </div>
             <nav className="mobile-drawer-nav">
-              {(['markets', 'predict', 'vault', 'portfolio', 'agent', 'about'] as const).map((t) => (
+              {(['markets', 'predict', 'vault', 'leaderboard', 'portfolio', 'agent', 'about'] as const).map((t) => (
                 <NavLink
                   key={t}
                   to={`/${t}`}
@@ -357,6 +358,7 @@ function AppInner() {
             <Route path="/predict" element={<PredictPage />} />
             <Route path="/predict/:oracleId" element={<PredictDetailPage theme={theme} />} />
             <Route path="/vault" element={<VaultView />} />
+            <Route path="/leaderboard" element={<LeaderboardPage />} />
             <Route path="/portfolio" element={<PortfolioPage markets={markets} />} />
             <Route path="/agent" element={<AgentAuthorizePage />} />
 
