@@ -127,7 +127,9 @@ function AppInner() {
             <div className="chain-dot" />
             Testnet
           </div>
-          <ConnectButton className="dm-connect" />
+          <span className="nav-connect-desktop">
+            <ConnectButton className="dm-connect" />
+          </span>
           <button
             className="nav-hamburger"
             aria-label="Open menu"
@@ -183,6 +185,9 @@ function AppInner() {
                 Docs ↗
               </a>
             </nav>
+            <div className="mobile-drawer-connect">
+              <ConnectButton className="dm-connect" />
+            </div>
           </aside>
         </div>
       )}

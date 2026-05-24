@@ -2679,6 +2679,20 @@ body {
   .nav-right > .nav-tab { display: none; }
 }
 
+/* On phones we hide the in-app top-bar wallet button entirely — dapp-kit's
+   connected chip resists shrinking via className and wraps to two lines,
+   distorting the header. The ConnectButton lives inside the mobile drawer
+   instead (see App.tsx mobile-drawer-connect). */
+@media (max-width: 640px) {
+  .nav-connect-desktop { display: none !important; }
+}
+
+/* In-app mobile drawer footer that holds the ConnectButton. */
+.mobile-drawer-connect {
+  padding: 16px 20px;
+  border-top: 1px solid var(--border-base);
+}
+
 /* Hero candle HUD is a desktop scroll-storytelling overlay — on phones it
    clips over the small 3D scene, so hide it (the same copy is in the sections
    below). */
