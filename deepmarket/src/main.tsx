@@ -12,20 +12,15 @@ import './index.css';
 
 // Register the Slush WEB wallet with Wallet Standard so it shows up in the
 // connect modal — users without the Slush extension can onboard via the web
-// app (no install). Must run once, as early as possible.
-// https://sdk.mystenlabs.com/slush-wallet/dapp
+// app (no install). Must run once, as early as possible. Extension users still
+// see the extension. https://sdk.mystenlabs.com/slush-wallet/dapp
 //
-// MOBILE: skip registration. The Slush web flow requires a child window opened
-// via window.open() with a working `window.opener` back-channel; mobile
-// browsers strip window.opener when popups land as a new tab, producing
-// "This functionality requires a window opened through window.open …"
-// Mobile users get the Slush mobile app / other wallet-standard wallets instead.
-const isMobile =
-    typeof navigator !== 'undefined' &&
-    /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-if (!isMobile) {
-    registerSlushWallet('DeepMarket');
-}
+// Note: on some mobile browsers the popup may land as a new tab and strip
+// window.opener, producing "This functionality requires a window opened
+// through window.open". That is an intermittent Slush flow issue — keep the
+// wallet registered so it works for users whose browser DOES preserve the
+// opener back-channel.
+registerSlushWallet('DeepMarket');
 
 const queryClient = new QueryClient();
 
