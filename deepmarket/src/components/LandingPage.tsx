@@ -6,7 +6,7 @@ import { ConnectButton } from '@mysten/dapp-kit';
 import { CONFIG } from '../lib/config';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
-import { ArrowRight, ExternalLink /* Sun, Moon — theme toggle commented out (dark-locked) */ } from 'lucide-react';
+import { ArrowRight, ExternalLink, Menu, X /* Sun, Moon — theme toggle commented out (dark-locked) */ } from 'lucide-react';
 import { useMarkets } from '../lib/useMarkets';
 import { formatVol } from '../App';
 // import { rippleThemeToggle } from '../lib/themeToggle'; // theme toggle commented out (dark-locked)
@@ -67,6 +67,12 @@ export default function LandingPage() {
 
     const [activeLayer, setActiveLayer] = useState<number | null>(null);
     const handleLayerHover = useCallback((idx: number | null) => setActiveLayer(idx), []);
+
+    const [menuOpen, setMenuOpen] = useState(false);
+    const scrollToId = useCallback((id: string) => {
+        setMenuOpen(false);
+        document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
+    }, []);
 
     // setTheme dropped — theme toggle button is commented out (dark-locked).
     const [theme] = useState<'dark' | 'light'>(
@@ -239,18 +245,74 @@ export default function LandingPage() {
                 </motion.button>
                 */}
 
-                <ConnectButton />
-                <motion.button
-                    className="btn btn-primary btn-sm"
-                    onClick={() => navigate('/markets')}
-                    whileHover={{ scale: 1.04 }}
-                    whileTap={{ scale: 0.97 }}
-                    style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+                <div className="lp-nav-actions">
+                    <ConnectButton className="dm-connect" />
+                    <motion.button
+                        className="btn btn-primary btn-sm"
+                        onClick={() => navigate('/markets')}
+                        whileHover={{ scale: 1.04 }}
+                        whileTap={{ scale: 0.97 }}
+                        style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+                    >
+                        Enter App
+                        <ArrowRight size={13} />
+                    </motion.button>
+                </div>
+                <button
+                    className="lp-nav-burger"
+                    aria-label="Open menu"
+                    onClick={() => setMenuOpen(true)}
                 >
-                    Enter App
-                    <ArrowRight size={13} />
-                </motion.button>
+                    <Menu size={20} />
+                </button>
             </nav>
+
+            {/* ── Mobile drawer ── */}
+            {menuOpen && (
+                <div className="mobile-drawer-overlay" onClick={() => setMenuOpen(false)}>
+                    <aside className="mobile-drawer-panel" onClick={(e) => e.stopPropagation()}>
+                        <div className="mobile-drawer-header">
+                            <span style={{ fontWeight: 800, letterSpacing: '-0.02em' }}>DeepMarket</span>
+                            <button
+                                className="mobile-drawer-close"
+                                aria-label="Close menu"
+                                onClick={() => setMenuOpen(false)}
+                            >
+                                <X size={20} />
+                            </button>
+                        </div>
+                        <nav className="mobile-drawer-nav">
+                            <button className="mobile-drawer-link" onClick={() => scrollToId('how-it-works')}>
+                                How It Works
+                            </button>
+                            <button className="mobile-drawer-link" onClick={() => scrollToId('features')}>
+                                Features
+                            </button>
+                            <a
+                                className="mobile-drawer-link"
+                                href={CONFIG.DOCS_URL}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                onClick={() => setMenuOpen(false)}
+                            >
+                                Docs ↗
+                            </a>
+                            <button
+                                className="mobile-drawer-link"
+                                onClick={() => {
+                                    setMenuOpen(false);
+                                    navigate('/markets');
+                                }}
+                            >
+                                Enter App →
+                            </button>
+                        </nav>
+                        <div style={{ padding: '16px 20px', borderTop: '1px solid var(--border-base)' }}>
+                            <ConnectButton className="dm-connect" />
+                        </div>
+                    </aside>
+                </div>
+            )}
 
             {/* ══════════════════════ HERO ══════════════════════ */}
             <section ref={heroRef} style={{ position: 'relative' }}>
@@ -363,6 +425,7 @@ export default function LandingPage() {
                             {activeCandle !== null && CANDLE_META[activeCandle] && (
                                 <motion.div
                                     key={activeCandle}
+                                    className="lp-hud-card"
                                     initial={{ opacity: 0, y: 12, scale: 0.95 }}
                                     animate={{ opacity: 1, y: 0,  scale: 1    }}
                                     exit={{    opacity: 0, y: -8, scale: 0.96 }}
