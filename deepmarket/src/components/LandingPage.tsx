@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
@@ -266,8 +267,9 @@ export default function LandingPage() {
                 </button>
             </nav>
 
-            {/* ── Mobile drawer ── */}
-            {menuOpen && (
+            {/* ── Mobile drawer (portal to body — landing-root is GSAP-managed,
+                 so rendering the drawer inside it crashes React's reconciler) ── */}
+            {menuOpen && createPortal(
                 <div className="mobile-drawer-overlay" onClick={() => setMenuOpen(false)}>
                     <aside className="mobile-drawer-panel" onClick={(e) => e.stopPropagation()}>
                         <div className="mobile-drawer-header">
@@ -310,7 +312,8 @@ export default function LandingPage() {
                             <ConnectButton className="dm-connect" />
                         </div>
                     </aside>
-                </div>
+                </div>,
+                document.body
             )}
 
             {/* ══════════════════════ HERO ══════════════════════ */}
