@@ -1150,6 +1150,24 @@ body {
   border-left: 1px solid var(--border-base);
 }
 
+/* Predict page header on mobile: sort control + refresh share one row,
+   sort fills the remaining width, buttons share evenly, tighter font. */
+@media (max-width: 640px) {
+  .predict-header > div:last-child {
+    width: 100%;
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+  .sort-seg { flex: 1; }
+  .sort-seg-btn {
+    flex: 1;
+    padding: 8px 4px;
+    font-size: 0.72rem;
+    text-align: center;
+  }
+}
+
 /* ---- About page ---- */
 .about-page {
   max-width: 1000px;
@@ -3842,13 +3860,18 @@ html.has-horizontal-pin body, body { overflow-x: hidden; }
   margin-top: 4px;
 }
 .mobile-drawer-link {
+  display: block;
   padding: 12px 14px;
   border-radius: 8px;
   text-decoration: none;
+  text-align: center;
   color: var(--text-primary);
   font-weight: 500;
   font-size: 0.95rem;
+  background: none;
   border: 1px solid transparent;
+  cursor: pointer;
+  font-family: inherit;
   transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
 }
 .mobile-drawer-link:hover {
