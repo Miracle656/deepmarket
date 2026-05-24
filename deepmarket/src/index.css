@@ -1151,9 +1151,12 @@ body {
 }
 
 /* Predict page header on mobile: sort control + refresh share one row,
-   sort fills the remaining width, buttons share evenly, tighter font. */
+   sort fills the remaining width, buttons share evenly, tighter font.
+   Scoped with :has(.sort-seg) so this only hits the PredictPage actions row
+   — NOT every last-div in any .predict-header (which used to break Vault, where
+   the lone inner div was being flexed into 3 columns). */
 @media (max-width: 640px) {
-  .predict-header > div:last-child {
+  .predict-header > div:has(.sort-seg) {
     width: 100%;
     display: flex;
     gap: 8px;
