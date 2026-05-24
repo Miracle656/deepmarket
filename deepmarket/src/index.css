@@ -303,6 +303,10 @@ body {
   .main-layout {
     flex-direction: column;
     overflow-y: auto;
+    overflow-x: hidden; /* CSS spec: setting overflow-y to auto implicitly
+                          makes overflow-x auto too — and any wide child
+                          (Doto stat numbers, long titles) was giving the
+                          page a horizontal scrollbar on phones. */
   }
 }
 
