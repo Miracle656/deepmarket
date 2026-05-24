@@ -823,7 +823,10 @@ body {
   max-width: 760px;
   margin: 0 auto;
   padding: 28px 20px 48px;
+  overflow-x: hidden; /* belt-and-suspenders: no horizontal scroll on phones */
 }
+.vault-view .predict-title,
+.vault-view .predict-sub { word-wrap: break-word; overflow-wrap: anywhere; }
 .vault-panel {
   margin-top: 16px;
   padding: 18px 20px;
