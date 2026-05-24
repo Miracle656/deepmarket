@@ -2665,17 +2665,25 @@ body {
   border-radius: 9px !important;
 }
 @media (max-width: 640px) {
-  /* In the drawer it gets full width for an easy tap target */
-  .dm-connect { width: 100% !important; justify-content: center !important; }
+  /* Only the drawer copy goes full-width (easy tap target). The top-bar copy
+     stays compact — full-width there would stretch across the header. */
+  .mobile-drawer-panel .dm-connect {
+    width: 100% !important;
+    justify-content: center !important;
+  }
 }
 
-/* Hero candle HUD card must not overflow on narrow screens */
+/* In-app top bar on mobile: Docs lives in the drawer, so hide the inline
+   Docs link to leave room for the compact wallet button + hamburger. */
+@media (max-width: 900px) {
+  .nav-right > .nav-tab { display: none; }
+}
+
+/* Hero candle HUD is a desktop scroll-storytelling overlay — on phones it
+   clips over the small 3D scene, so hide it (the same copy is in the sections
+   below). */
 @media (max-width: 640px) {
-  .lp-hud-card {
-    min-width: 0 !important;
-    max-width: 84vw !important;
-    left: 50% !important;
-  }
+  .lp-hud-card { display: none !important; }
 }
 
 /* ══════════════════ LANDING — Navbar + CTA + global mobile sweep ══════════════════ */

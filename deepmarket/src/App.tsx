@@ -127,7 +127,7 @@ function AppInner() {
             <div className="chain-dot" />
             Testnet
           </div>
-          <ConnectButton />
+          <ConnectButton className="dm-connect" />
           <button
             className="nav-hamburger"
             aria-label="Open menu"
