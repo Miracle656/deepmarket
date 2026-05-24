@@ -91,8 +91,7 @@ export default function LandingPage() {
     useEffect(() => {
         const ctx = gsap.context(() => {
             gsap.timeline({ defaults: { ease: 'power3.out' } })
-                .fromTo('.h-badge', { y: 14, opacity: 0 }, { y: 0, opacity: 1, duration: 0.55 })
-                .fromTo('.h-l1',    { y: 48, opacity: 0 }, { y: 0, opacity: 1, duration: 0.75 }, '-=0.25')
+                .fromTo('.h-l1',    { y: 48, opacity: 0 }, { y: 0, opacity: 1, duration: 0.75 })
                 .fromTo('.h-l2',    { y: 48, opacity: 0 }, { y: 0, opacity: 1, duration: 0.75 }, '-=0.55')
                 .fromTo('.h-sub',   { y: 24, opacity: 0 }, { y: 0, opacity: 1, duration: 0.55 }, '-=0.40')
                 .fromTo('.h-ctas',  { y: 20, opacity: 0 }, { y: 0, opacity: 1, duration: 0.50 }, '-=0.30');
