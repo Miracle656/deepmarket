@@ -1,0 +1,213 @@
+import { Callout, Steps } from 'nextra/components'
+
+# Trading on Predict — step by step
+
+A walkthrough for **traders** on the DeepBook Predict product. For the
+protocol-level reference (Move calls, vault internals, SVI math), see
+[DeepBook Predict](/products/deepbook-predict).
+
+<Callout type="info">
+  All actions described here happen on **Sui testnet**. Quote asset is **dUSDC**
+  (not the official testnet USDC).
+</Callout>
+
+## Before you start
+
+1. **A Sui wallet** — Slush extension, Slush web, Sui Wallet, or any
+   wallet-standard wallet. Connect via the **Connect** button in the top right
+   (or in the hamburger drawer on mobile).
+2. **dUSDC** — Predict's quote asset. Request from the
+   [dUSDC faucet form](https://tally.so/r/Xx102L). Allow a few minutes.
+3. **A little SUI** — for gas. Use any Sui testnet faucet.
+
+## Trade a binary option (UP / DOWN)
+
+<Steps>
+
+### Open the oracle list
+
+Go to **/predict**. You'll see active oracles (rolling sub-hour BTC expiries)
+sorted by **Expiring soon** by default. Switch sort to **Newest** or
+**Furthest** with the toggle in the top right of the list.
+
+Each oracle card shows the underlying, status (Active / Pending / Settled),
+expiry (`in Xm` / `in Xh`), and the min-strike floor.
+
+### Pick an oracle
+
+Click an **Active** oracle. You land on the oracle detail page with four chart
+tabs at the top:
+
+- **Price** — BTC spot line from Mysten's predict-server.
+- **Vol Smile** — live SVI smile (log-moneyness × implied vol) from the
+  on-chain params the vault prices off.
+- **Candles** — real BTC OHLC candlesticks from GMX's public keeper.
+- **Trades** — live mint/redeem feed on this oracle from `/trades/:id`.
+
+The mint sidebar is on the right.
+
+### First time only — initialize a PredictManager
+
+The sidebar shows **Init manager** before your first mint. Click it and
+sign — this creates your dUSDC margin account (a shared object). The id is
+cached in localStorage; subsequent visits skip this step.
+
+After this, you can have multiple managers per address (e.g. one for the web
+app, one for the Telegram bot).
+
+### Pick your view: Binary or Range
+
+Toggle **Binary | Range** at the top of the mint sidebar.
+
+- **Binary** — bet BTC settles **above** (UP) or **at-or-below** (DOWN) a
+  single strike. Pays `quantity` dUSDC if right, $0 if wrong.
+- **Range** — bet BTC settles **within a band** `[lower, higher]`. Pays
+  `quantity` if right, $0 if wrong.
+
+### Pick a strike (Binary)
+
+You'll see an **11-strike grid centered on rounded spot**. Strikes step by the
+oracle's `tick_size`. Click a strike; pick **UP** or **DOWN**.
+
+For Range mode: two grids (Lower / Higher), with overlap states disabled.
+
+### Pick a quantity
+
+Quick chips: `$1`, `$5`, `$10`, `$25`. Or type a custom max payout. This is
+**how much you'll receive if you're right** — your cost is always less than
+quantity (it's the implied probability × quantity).
+
+The sidebar live-quotes:
+
+| | |
+|---|---|
+| **Cost** | What you pay in dUSDC now |
+| **Payout** | What you get if right (= `quantity`) |
+| **Implied prob** | `cost / quantity` as a % |
+
+These come from a **350ms-debounced devInspect of `predict::get_trade_amounts`** —
+no tx, no gas; updates live as you change strike/qty.
+
+### Confirm & sign
+
+Click **Mint UP @ $X** (or **DOWN**). One signature. The tx:
+
+1. Deposits dUSDC from your wallet into the manager (if needed)
+2. Constructs the `MarketKey` for `(oracle, expiry, strike, is_up)`
+3. Calls `predict::mint` for `quantity`
+
+The position appears under **Your positions** in the sidebar.
+
+### Sell early (optional)
+
+Before expiry, click **Sell $X** on the position row to redeem at the live
+**bid**. The payout (mark price × quantity) returns to your manager. Use this
+to take profit (or cut loss) without waiting for settlement.
+
+### Wait for settlement
+
+When the oracle expires (`status: pending` → `settled`):
+
+- In-the-money positions transition to **won** / **redeemable**.
+- Out-of-the-money positions transition to **lost**.
+
+Click the per-position button:
+
+- ⭐ **Claim $X** for winners — payout flows to the manager.
+- 🗑 **Clear position** for losers — closes the row.
+
+### Withdraw to wallet
+
+When you want to take dUSDC out of the manager: top of the sidebar shows
+**Withdraw $X → wallet**. One tx; dUSDC returns to your address.
+
+</Steps>
+
+## Be the house — supply liquidity to the vault
+
+DeepBook Predict's vault is the **counterparty to every option**. LPs supply
+dUSDC into the vault and earn the premiums takers pay. Vault yield comes from:
+
+- **Edge in pricing** — the SVI surface includes a spread, so on average the
+  vault sells options slightly above fair value.
+- **Time decay** — premium decays as expiry approaches.
+
+<Steps>
+
+### Open the Vault page
+
+Go to **/vault**. You'll see vault stats:
+
+- **TVL** — total dUSDC held by the vault.
+- **Available** — withdrawable headroom (= balance − max payout).
+- **Utilization** — exposed-payout / TVL.
+
+Plus **Your position**: your **PLP** shares + current value at the live share
+price.
+
+### Supply dUSDC
+
+In the **Supply** tab, enter an amount (or hit **Max** = your wallet dUSDC),
+then **Supply liquidity**. One signature. You receive **PLP** tokens
+representing your share of the vault. PLP shares accrue value as the vault
+profits.
+
+<Callout type="info">
+  Supply/withdraw txs assert the vault's mark-to-market is fresh — DeepMarket
+  automatically calls `refresh_oracle_mtm` for live exposed oracles in the same
+  PTB so the tx never aborts on stale MTM.
+</Callout>
+
+### Watch the share price
+
+Your **PLP balance** is constant; the **share price** (NAV per PLP) grows over
+time as the vault earns. **Your position value** = balance × share price.
+
+### Withdraw
+
+In the **Withdraw** tab, enter a dUSDC amount (or **Max** for your full
+position). The frontend converts to the right PLP share count, burns them, and
+returns dUSDC. One signature.
+
+</Steps>
+
+## Other surfaces
+
+- **/portfolio** — every PredictManager you own, with a cumulative realized
+  **P&L chart** (from `/managers/:id/pnl`), per-manager balances, and open
+  positions.
+- **/leaderboard** — every PredictManager ranked by realized P&L. Your own
+  managers are highlighted.
+- **/predict/:id → Trades tab** — live mint/redeem feed for that oracle.
+- **Telegram bot** — `/strategy` lets an autonomous Claude-powered agent mint
+  binaries on your behalf with an on-chain spend cap. See
+  [the agent docs](/agent/llm-agent).
+
+## Tips
+
+- **Near-spot binaries are not free money.** A 50¢ binary needs ~50% win rate
+  to break even — and short-dated near-spot bets have high gamma. Read the
+  smile.
+- **Premium tax.** The bid is below the fair mid; selling early always loses
+  some edge to the vault's spread.
+- **Settle before you withdraw.** Open positions lock against the manager's
+  trading balance; redeeming/settling frees it up for withdrawal.
+- **Range options beat directional bets in chop.** If you think the underlying
+  will stay rangebound, a `[lower, higher]` mint pays more for the same risk
+  budget than two opposing binaries.
+
+## Common errors
+
+| Message | What it means |
+|---|---|
+| `EAskPriceOutOfBounds` | Strike is outside the vault's quote band; pick a closer strike. |
+| `Insufficient trading balance` | Deposit more dUSDC into the manager first. |
+| `ENoDataPoints` | Vault MTM is stale; usually resolves in seconds — retry. |
+| `redeem failed (not settled)` | Oracle is still live. Either wait or use **Sell** for the live bid. |
+
+## Related
+
+- [DeepBook Predict — protocol reference](/products/deepbook-predict)
+- [Spot YES/NO Markets](/products/spot-markets) — the other backend
+- [LLM Agent](/agent/llm-agent) — let Claude trade for you with a capped budget
+- [Deployed Contracts](/reference/contracts) — Predict package + oracle ids
