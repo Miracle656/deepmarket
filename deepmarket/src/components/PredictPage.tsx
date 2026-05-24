@@ -19,6 +19,7 @@ export default function PredictPage() {
     const [oracles, setOracles] = useState<OracleSummary[] | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [refreshing, setRefreshing] = useState(false);
+    const [sort, setSort] = useState<'soon' | 'far' | 'new'>('soon');
 
     const load = async () => {
         setError(null);
@@ -39,7 +40,12 @@ export default function PredictPage() {
         return () => clearInterval(interval);
     }, []);
 
-    const active = oracles?.filter((o) => o.status === 'active') ?? [];
+    const sortFn = (a: OracleSummary, b: OracleSummary) => {
+        if (sort === 'soon') return a.expiry - b.expiry; // expiring first
+        if (sort === 'far') return b.expiry - a.expiry; // furthest first
+        return (b.activated_at ?? 0) - (a.activated_at ?? 0); // newest first
+    };
+    const active = (oracles?.filter((o) => o.status === 'active') ?? []).sort(sortFn);
     const pending = oracles?.filter((o) => o.status === 'pending') ?? [];
     const settled = oracles?.filter((o) => o.status === 'settled') ?? [];
 
@@ -57,15 +63,32 @@ export default function PredictPage() {
                         asset: dUSDC. Pricing via SVI vol surface.
                     </p>
                 </div>
-                <button
-                    className="btn btn-ghost btn-sm"
-                    onClick={load}
-                    disabled={refreshing}
-                    style={{ display: 'flex', alignItems: 'center', gap: 6 }}
-                >
-                    <RefreshCw size={14} className={refreshing ? 'spin' : ''} />
-                    Refresh
-                </button>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <div className="sort-seg">
+                        {([
+                            ['soon', 'Expiring soon'],
+                            ['new', 'Newest'],
+                            ['far', 'Furthest'],
+                        ] as const).map(([k, label]) => (
+                            <button
+                                key={k}
+                                className={`sort-seg-btn ${sort === k ? 'active' : ''}`}
+                                onClick={() => setSort(k)}
+                            >
+                                {label}
+                            </button>
+                        ))}
+                    </div>
+                    <button
+                        className="btn btn-ghost btn-sm"
+                        onClick={load}
+                        disabled={refreshing}
+                        style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+                    >
+                        <RefreshCw size={14} className={refreshing ? 'spin' : ''} />
+                        Refresh
+                    </button>
+                </div>
             </div>
 
             {error && (

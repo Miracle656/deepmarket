@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { ArrowLeft, LineChart, MessageCircle, BookOpen } from 'lucide-react';
+import { ArrowLeft, LineChart, MessageCircle, BookOpen, History } from 'lucide-react';
 import type { Market } from '../lib/config';
 import { INDEXER_URL } from '../lib/api';
 import TvChart from './TvChart';
@@ -8,6 +8,7 @@ import TradeSidebar from './TradeSidebar';
 import MintTokensModal from './MintTokensModal';
 import MarketChat from './MarketChat';
 import OrderBook from './OrderBook';
+import MarketTrades from './MarketTrades';
 
 function formatDate(ms: number) {
     const d = new Date(ms);
@@ -32,7 +33,7 @@ export default function MarketDetailPage({ markets, theme, onResolve }: Props) {
     const market = markets.find(m => m.objectId === marketId);
     const [priceHistory, setPriceHistory] = useState<PricePoint[]>([]);
     const [showMint, setShowMint] = useState(false);
-    const [activeTab, setActiveTab] = useState<'chart' | 'book' | 'chat'>('chart');
+    const [activeTab, setActiveTab] = useState<'chart' | 'book' | 'trades' | 'chat'>('chart');
 
     useEffect(() => {
         if (!market) return;
@@ -138,6 +139,14 @@ export default function MarketDetailPage({ markets, theme, onResolve }: Props) {
                             <BookOpen size={14} /> Order Book
                         </button>
                         <button
+                            className={`market-tab ${activeTab === 'trades' ? 'active' : ''}`}
+                            onClick={() => setActiveTab('trades')}
+                            role="tab"
+                            aria-selected={activeTab === 'trades'}
+                        >
+                            <History size={14} /> Trades
+                        </button>
+                        <button
                             className={`market-tab ${activeTab === 'chat' ? 'active' : ''}`}
                             onClick={() => setActiveTab('chat')}
                             role="tab"
@@ -156,6 +165,11 @@ export default function MarketDetailPage({ markets, theme, onResolve }: Props) {
                     {activeTab === 'book' && (
                         <div style={{ marginTop: 16, marginBottom: 16, height: 450, width: '100%', overflowY: 'auto' }}>
                             <OrderBook yesPoolId={market.yesPoolId ?? ''} />
+                        </div>
+                    )}
+                    {activeTab === 'trades' && (
+                        <div style={{ marginTop: 16, marginBottom: 16, height: 450, width: '100%', overflowY: 'auto' }}>
+                            <MarketTrades marketId={market.id} />
                         </div>
                     )}
                     {activeTab === 'chat' && (

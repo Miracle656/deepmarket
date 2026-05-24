@@ -1125,6 +1125,31 @@ body {
   font-size: 0.8rem;
 }
 
+/* ---- Sort segmented control ---- */
+.sort-seg {
+  display: inline-flex;
+  border: 1px solid var(--border-base);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.sort-seg-btn {
+  padding: 6px 11px;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.sort-seg-btn.active {
+  background: var(--yes-dim, rgba(0, 229, 160, 0.1));
+  color: var(--yes);
+}
+.sort-seg-btn + .sort-seg-btn {
+  border-left: 1px solid var(--border-base);
+}
+
 .market-card-prices {
   display: flex;
   align-items: center;
