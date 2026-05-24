@@ -15,6 +15,7 @@ import PredictDetailPage from './components/PredictDetailPage';
 import AgentAuthorizePage from './components/AgentAuthorizePage';
 import VaultView from './components/VaultView';
 import LeaderboardPage from './components/LeaderboardPage';
+import AboutPage from './components/AboutPage';
 import Sparkline from './components/Sparkline';
 // rippleThemeToggle import removed — light mode is disabled in production.
 // Re-add when the toggle button is uncommented in the nav.
@@ -362,39 +363,7 @@ function AppInner() {
             <Route path="/portfolio" element={<PortfolioPage markets={markets} />} />
             <Route path="/agent" element={<AgentAuthorizePage />} />
 
-            <Route path="/about" element={
-              <div style={{ maxWidth: 680, padding: '20px 0' }}>
-                <h2 style={{ fontSize: '1.3rem', fontWeight: 700, marginBottom: 16 }}>About DeepMarket</h2>
-                <p style={{ color: 'var(--text-secondary)', lineHeight: 1.8, marginBottom: 16 }}>
-                  DeepMarket is a decentralized prediction market protocol built on Sui, using DeepBook V3 as the matching engine.
-                  Each market has YES and NO outcome tokens that trade against each other — price discovery reflects implied probability.
-                </p>
-                <div style={{ background: 'var(--bg-panel)', border: '1px solid var(--border-base)', borderRadius: 12, padding: '20px', marginBottom: 16 }}>
-                  <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em' }}>Deployed Contracts</div>
-                  {[
-                    ['Package', CONFIG.PACKAGE_ID],
-                    ['YES TreasuryCap', CONFIG.YES_TREASURY_CAP],
-                    ['NO TreasuryCap', CONFIG.NO_TREASURY_CAP],
-                    ['Upgrade Cap', CONFIG.UPGRADE_CAP],
-                  ].map(([k, v]) => (
-                    <div className="info-row" key={k}>
-                      <span className="info-row-key">{k}</span>
-                      <span className="info-row-val mono" style={{ fontSize: '0.72rem' }}>{v?.slice(0, 12)}…{v?.slice(-6)}</span>
-                    </div>
-                  ))}
-                  <div style={{ marginTop: 12 }}>
-                    <a
-                      href={`https://suiscan.xyz/testnet/object/${CONFIG.PACKAGE_ID}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="btn btn-primary btn-sm"
-                    >
-                      View on SuiScan ↗
-                    </a>
-                  </div>
-                </div>
-              </div>
-            } />
+            <Route path="/about" element={<AboutPage />} />
             <Route path="*" element={<Navigate to="/markets" replace />} />
           </Routes>
         </div>
