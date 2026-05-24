@@ -1266,6 +1266,37 @@ body {
   }
 }
 
+/* ──────── Vault / Leaderboard / Portfolio — mobile passes ──────── */
+
+/* Leaderboard: a 6-col table won't fit a phone. Collapse to the essentials
+   — rank · owner · realized P&L — hiding manager id, account value, open. */
+@media (max-width: 640px) {
+  .lb-page { padding: 20px 14px 40px; }
+  .lb-head,
+  .lb-row {
+    grid-template-columns: 0.5fr 1.3fr 1fr;
+    gap: 8px;
+    padding: 9px 12px;
+  }
+  .lb-head > :nth-child(2),
+  .lb-row > :nth-child(2),
+  .lb-head > :nth-child(5),
+  .lb-row > :nth-child(5),
+  .lb-head > :nth-child(6),
+  .lb-row > :nth-child(6) {
+    display: none;
+  }
+  /* Portfolio 5-stat strip: let the orphan 5th cell span the full row */
+  .stat-cell:nth-child(5) { border-top: 1px solid var(--border-dim); }
+  .stat-cell:nth-child(5):last-child { grid-column: 1 / -1; }
+}
+
+/* Vault stats ($1,002,648.00 is wide) — stack on small phones */
+@media (max-width: 560px) {
+  .vault-view { padding: 22px 14px 44px; }
+  .vault-stats { grid-template-columns: 1fr; gap: 10px; }
+}
+
 .market-card-prices {
   display: flex;
   align-items: center;
