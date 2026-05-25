@@ -970,6 +970,53 @@ body {
   word-break: break-word;
 }
 
+/* ---- Vault risk panel ---- */
+.risk-bar-wrap {
+  margin-top: 14px;
+}
+.risk-bar {
+  height: 8px;
+  border-radius: 99px;
+  background: var(--bg-elevated, rgba(255, 255, 255, 0.04));
+  border: 1px solid var(--border-base);
+  overflow: hidden;
+}
+.risk-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--yes), #f5a623);
+  transition: width 200ms ease;
+}
+.risk-bar-foot {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 6px;
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+}
+.risk-block {
+  margin-top: 16px;
+  padding: 12px 14px;
+  border: 1px solid var(--border-base);
+  border-radius: 10px;
+}
+.risk-block-h {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+.risk-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  padding: 4px 0;
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+}
+
 /* ---- Predict detail chart tabs ---- */
 .pchart-tabs {
   display: flex;

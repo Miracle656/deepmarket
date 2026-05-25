@@ -5,6 +5,7 @@
 
 import { Layers } from 'lucide-react';
 import VaultPanel from './VaultPanel';
+import VaultRiskPanel from './VaultRiskPanel';
 
 export default function VaultView() {
     return (
@@ -24,6 +25,7 @@ export default function VaultView() {
                 </div>
             </div>
             <VaultPanel />
+            <VaultRiskPanel />
         </div>
     );
 }

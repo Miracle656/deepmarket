@@ -213,12 +213,26 @@ export interface VaultStats {
     vaultValue: number;
     /** Outstanding max payout the vault is on the hook for (human). */
     totalMaxPayout: number;
+    /** Total MTM (sum of mark-to-market across holders' positions, human). */
+    totalMtm: number;
     /** Withdrawable headroom = balance − max payout (human). */
     available: number;
     /** Total PLP shares minted (raw). */
     totalShares: number;
     /** vaultValue in raw base units — used to value LP shares precisely. */
     vaultValueRaw: number;
+    /** Configured cap on total exposure (% of vault, 0–1). 1e9-scaled on-chain. */
+    maxExposurePct: number;
+    /** Withdrawal token-bucket state. */
+    withdrawalLimiter: {
+        enabled: boolean;
+        availableUsd: number; // human, base/1e6
+        capacityUsd: number; // human
+        refillRatePerMs: number; // raw (per ms)
+        lastUpdatedMs: number;
+    };
+    /** Quote-asset type strings the vault accepts for new supply/mint. */
+    acceptedQuotes: string[];
 }
 
 /**
@@ -230,6 +244,27 @@ type PredictContent = {
         vault?: { fields?: Record<string, string> };
         treasury_cap?: {
             fields?: { total_supply?: { fields?: { value?: string } } };
+        };
+        risk_config?: {
+            fields?: { max_total_exposure_pct?: string };
+        };
+        withdrawal_limiter?: {
+            fields?: {
+                enabled?: boolean;
+                available?: string;
+                capacity?: string;
+                refill_rate_per_ms?: string;
+                last_updated_ms?: string;
+            };
+        };
+        treasury_config?: {
+            fields?: {
+                accepted_quotes?: {
+                    fields?: {
+                        contents?: { fields?: { name?: string } }[];
+                    };
+                };
+            };
         };
     };
 };
@@ -256,13 +291,35 @@ export async function getVaultStats(client: SuiClient): Promise<VaultStats | nul
         const D = 10 ** CONFIG.DUSDC_DECIMALS;
         const vaultValueRaw = Math.max(0, balance - mtm);
 
+        // Risk fields — all read from the same shared object, no extra RPCs.
+        const maxExposureRaw = Number(
+            content?.fields?.risk_config?.fields?.max_total_exposure_pct ?? 0
+        );
+        const wl = content?.fields?.withdrawal_limiter?.fields;
+        const acceptedQuotes = (
+            content?.fields?.treasury_config?.fields?.accepted_quotes?.fields?.contents ?? []
+        )
+            .map((q) => q?.fields?.name)
+            .filter((n): n is string => typeof n === 'string')
+            .map((n) => (n.startsWith('0x') ? n : `0x${n}`));
+
         return {
             tvl: balance / D,
             vaultValue: vaultValueRaw / D,
             totalMaxPayout: maxPayout / D,
+            totalMtm: mtm / D,
             available: Math.max(0, balance - maxPayout) / D,
             totalShares,
             vaultValueRaw,
+            maxExposurePct: maxExposureRaw / 1e9,
+            withdrawalLimiter: {
+                enabled: Boolean(wl?.enabled),
+                availableUsd: Number(wl?.available ?? 0) / D,
+                capacityUsd: Number(wl?.capacity ?? 0) / D,
+                refillRatePerMs: Number(wl?.refill_rate_per_ms ?? 0),
+                lastUpdatedMs: Number(wl?.last_updated_ms ?? 0),
+            },
+            acceptedQuotes,
         };
     } catch {
         return null;
