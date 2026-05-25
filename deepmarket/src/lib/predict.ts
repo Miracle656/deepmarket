@@ -130,23 +130,69 @@ async function fetchJson<T>(path: string): Promise<T> {
     return (await res.json()) as T;
 }
 
-/** All oracles for the configured Predict object (1800+, mostly historical). */
-export async function listAllOracles(): Promise<OracleSummary[]> {
-    return fetchJson<OracleSummary[]>(
-        `/predicts/${CONFIG.PREDICT_OBJECT_ID}/oracles`
-    );
+// The /oracles endpoint returns ALL ~2,800 oracles (no server-side filter or
+// pagination — query params are ignored) and takes ~15-30s. Cache the raw list
+// so returning visitors paint instantly and we only pay that cost occasionally.
+const ORACLES_CACHE_KEY = 'predict.oracles.cache';
+const ORACLES_TTL_MS = 3 * 60 * 1000; // 3 min
+let oraclesMem: { ts: number; data: OracleSummary[] } | null = null;
+
+function readOraclesCache(): { ts: number; data: OracleSummary[] } | null {
+    if (oraclesMem) return oraclesMem;
+    try {
+        const raw = localStorage.getItem(ORACLES_CACHE_KEY);
+        if (raw) {
+            const parsed = JSON.parse(raw);
+            if (parsed && Array.isArray(parsed.data)) {
+                oraclesMem = parsed;
+                return oraclesMem;
+            }
+        }
+    } catch {
+        /* ignore */
+    }
+    return null;
 }
 
-/**
- * Active + recently expired oracles, newest first.
- * Filters out long-settled oracles to keep the UI focused on tradeable + just-settled markets.
- */
-export async function listTradeableOracles(): Promise<OracleSummary[]> {
-    const all = await listAllOracles();
+function filterTradeable(all: OracleSummary[]): OracleSummary[] {
     const cutoff = Date.now() - 24 * 60 * 60 * 1000; // 24h
     return all
         .filter((o) => o.status === 'active' || o.status === 'pending' || o.expiry >= cutoff)
         .sort((a, b) => b.expiry - a.expiry);
+}
+
+/** All oracles for the configured Predict object — cached (3 min TTL). */
+export async function listAllOracles(): Promise<OracleSummary[]> {
+    const c = readOraclesCache();
+    if (c && Date.now() - c.ts < ORACLES_TTL_MS) return c.data;
+    const data = await fetchJson<OracleSummary[]>(
+        `/predicts/${CONFIG.PREDICT_OBJECT_ID}/oracles`
+    );
+    oraclesMem = { ts: Date.now(), data };
+    try {
+        localStorage.setItem(ORACLES_CACHE_KEY, JSON.stringify(oraclesMem));
+    } catch {
+        /* quota / disabled — fine, mem cache still works */
+    }
+    return data;
+}
+
+/**
+ * Synchronously read tradeable oracles from cache (even if stale) for an
+ * instant first paint while the network refresh runs. Returns null if nothing
+ * is cached yet (first-ever visit).
+ */
+export function getCachedTradeableOracles(): OracleSummary[] | null {
+    const c = readOraclesCache();
+    return c ? filterTradeable(c.data) : null;
+}
+
+/**
+ * Active + recently expired oracles, newest first. Filters out long-settled
+ * oracles to keep the UI focused on tradeable + just-settled markets.
+ */
+export async function listTradeableOracles(): Promise<OracleSummary[]> {
+    return filterTradeable(await listAllOracles());
 }
 
 export async function getOracleState(oracleId: string): Promise<OracleState> {

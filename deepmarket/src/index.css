@@ -1202,6 +1202,31 @@ body {
   font-size: 0.8rem;
 }
 
+/* Surface Studio CTA on the Predict page */
+.surface-cta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  margin-bottom: 20px;
+  padding: 12px 16px;
+  border: 1px solid var(--yes-border, var(--border-base));
+  border-radius: 12px;
+  background: var(--yes-dim, rgba(0, 229, 160, 0.06));
+  color: var(--text-primary);
+  font-weight: 600;
+  font-size: 0.88rem;
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+.surface-cta:hover {
+  background: var(--yes-dim, rgba(0, 229, 160, 0.12));
+  border-color: var(--yes);
+}
+
 /* ---- Surface Studio ---- */
 .surface-page {
   max-width: 1140px;

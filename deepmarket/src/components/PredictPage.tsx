@@ -8,6 +8,7 @@ import { useNavigate } from 'react-router-dom';
 import { Activity, Clock, RefreshCw, TrendingUp, AlertCircle } from 'lucide-react';
 import {
     listTradeableOracles,
+    getCachedTradeableOracles,
     formatStrikeUsd,
     formatExpiry,
     statusColor,
@@ -16,7 +17,9 @@ import {
 
 export default function PredictPage() {
     const navigate = useNavigate();
-    const [oracles, setOracles] = useState<OracleSummary[] | null>(null);
+    // Paint instantly from cache (even if stale) while the ~20s network
+    // refresh runs in the background; null only on first-ever visit.
+    const [oracles, setOracles] = useState<OracleSummary[] | null>(() => getCachedTradeableOracles());
     const [error, setError] = useState<string | null>(null);
     const [refreshing, setRefreshing] = useState(false);
     const [sort, setSort] = useState<'soon' | 'far' | 'new'>('soon');
@@ -88,16 +91,18 @@ export default function PredictPage() {
                         <RefreshCw size={14} className={refreshing ? 'spin' : ''} />
                         Refresh
                     </button>
-                    <button
-                        className="btn btn-primary btn-sm"
-                        onClick={() => navigate('/surface')}
-                        title="Live multi-expiry SVI surface + arb-free checker"
-                        style={{ display: 'flex', alignItems: 'center', gap: 6 }}
-                    >
-                        Surface Studio →
-                    </button>
                 </div>
             </div>
+
+            {/* Surface Studio CTA — standalone so it never crowds the header row */}
+            <button
+                className="surface-cta"
+                onClick={() => navigate('/surface')}
+                title="Live multi-expiry SVI surface + arb-free checker"
+            >
+                <span>📊 Surface Studio — live SVI surface &amp; arbitrage-free checker</span>
+                <span aria-hidden>→</span>
+            </button>
 
             {error && (
                 <div className="alert alert-error" style={{ marginTop: 16 }}>
@@ -110,6 +115,10 @@ export default function PredictPage() {
                 <div className="predict-empty">
                     <RefreshCw size={28} className="spin" />
                     <div>Loading oracles…</div>
+                    <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: 6 }}>
+                        First load pulls the full oracle set from Mysten's server and can take
+                        ~20s. It's cached after that.
+                    </div>
                 </div>
             )}
 
