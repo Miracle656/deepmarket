@@ -33,6 +33,7 @@ import {
     getManagerPositions,
     getOracleState,
     listActiveOracles,
+    computeOracleFlow,
     spotToUsd,
     strikeToUsd,
     type OracleState,
@@ -151,6 +152,10 @@ async function chooseMintBatch(
             return null;
         }
 
+        // Real order flow for this oracle (trade tape) — confirmation signal
+        // for the agent. Returns an empty snapshot if there are no trades.
+        const flow = await computeOracleFlow(oracle.oracle_id);
+
         const ctx: AgentContext = {
             chatId,
             oracle,
@@ -159,6 +164,7 @@ async function chooseMintBatch(
             memory,
             exposureLastHour: exposureLastHourUsd(memory),
             quotes,
+            flow,
         };
         const wr = recentWinRate(memory);
         const cooldownActive = wr !== null && wr.rate < 0.4;

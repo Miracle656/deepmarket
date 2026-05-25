@@ -16,6 +16,7 @@ import type {
     OracleState,
     OracleSummary,
     Position,
+    OracleFlow,
 } from './predict.js';
 import {
     spotToUsd,
@@ -49,6 +50,12 @@ export interface AgentContext {
      * that appear here.
      */
     quotes: StrikeQuote[];
+    /**
+     * Live order-flow snapshot for THIS oracle from the public trade tape —
+     * net UP vs DOWN mint pressure + redemptions. Real data; on testnet it's
+     * often thin, so the agent must treat sparse flow as weak signal.
+     */
+    flow?: OracleFlow;
 }
 
 export interface AgentMint {
@@ -114,6 +121,11 @@ HOW YOU MAKE MONEY (read this twice):
     - A recent decisive spot move/momentum the vault's implied prob hasn't caught up to.
     - Your memory/notes showing a repeatable pattern on this oracle label.
     - A clearly mispriced far strike (cheap lottery) where implied << your read.
+    - ORDER FLOW (live trade tape for this oracle): a strong one-sided crowd
+      skew or heavy redemptions can corroborate momentum, OR mark a crowd to
+      fade when it disagrees with price action. Treat it as CONFIRMATION, not a
+      standalone reason — and ONLY when the flow window is meaningful (≥ ~4
+      trades). Thin flow (0-2 trades, common on testnet) is noise: ignore it.
     Do NOT invent conviction. "BTC feels like it'll go up" is not edge.
 
 Trade mechanics:
@@ -155,6 +167,32 @@ function buildUserPrompt(
     lines.push(`min_strike_usd: ${minStrikeUsd.toFixed(2)}`);
     lines.push(`tick_size_usd: ${tickUsd.toFixed(2)}`);
     lines.push(`minutes_to_expiry: ${minutesToExpiry}`);
+    lines.push('');
+
+    lines.push(`# Order flow (live trade tape for THIS oracle)`);
+    const flow = ctx.flow;
+    if (!flow || flow.trades === 0) {
+        lines.push('(no recent trades — flow is empty; treat as no signal.)');
+    } else if (flow.trades < 4) {
+        lines.push(
+            `thin: only ${flow.trades} recent trade(s) — NOISE, ignore for decisions.`
+        );
+        lines.push(
+            `  up_mint_usd=${flow.upMintUsd.toFixed(2)}  down_mint_usd=${flow.downMintUsd.toFixed(2)}  redeem_usd=${flow.redeemUsd.toFixed(2)}`
+        );
+    } else {
+        const lean =
+            flow.netSkew > 0.15 ? 'UP-heavy' : flow.netSkew < -0.15 ? 'DOWN-heavy' : 'balanced';
+        lines.push(
+            `trades=${flow.trades} over ~${flow.windowMin.toFixed(0)}m · crowd ${lean} (net_skew=${flow.netSkew.toFixed(2)})`
+        );
+        lines.push(
+            `  up_mint_usd=${flow.upMintUsd.toFixed(2)}  down_mint_usd=${flow.downMintUsd.toFixed(2)}  redeem_usd=${flow.redeemUsd.toFixed(2)}`
+        );
+        lines.push(
+            `  Use as confirmation only: align = press a touch; conflict w/ your price read = fade candidate. Never the sole reason.`
+        );
+    }
     lines.push('');
 
     lines.push(

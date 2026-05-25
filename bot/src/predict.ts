@@ -147,6 +147,86 @@ export async function getManagerPositions(
     }
 }
 
+// ── Order flow (per-oracle trade tape) ────────────────────────────────────
+
+interface RawTrade {
+    type: 'mint' | 'redeem';
+    checkpoint_timestamp_ms: number;
+    quantity: number;
+    is_up?: boolean;
+    lower_strike?: number; // present on range trades — excluded from up/down skew
+    payout?: number;
+}
+
+export interface OracleFlow {
+    /** Number of recent trades considered. */
+    trades: number;
+    /** dUSDC of UP binary mints in the window (human). */
+    upMintUsd: number;
+    /** dUSDC of DOWN binary mints in the window (human). */
+    downMintUsd: number;
+    /** dUSDC of redemptions in the window (human). */
+    redeemUsd: number;
+    /** (up − down) / (up + down) ∈ [-1, 1]. >0 = crowd leaning UP. */
+    netSkew: number;
+    /** Minutes the window spans (oldest→now). 0 if no trades. */
+    windowMin: number;
+}
+
+const EMPTY_FLOW: OracleFlow = {
+    trades: 0,
+    upMintUsd: 0,
+    downMintUsd: 0,
+    redeemUsd: 0,
+    netSkew: 0,
+    windowMin: 0,
+};
+
+/**
+ * Real order-flow snapshot for one oracle from the public trade tape
+ * (`/trades/:id`). Lets the agent read what the crowd is actually doing —
+ * net UP vs DOWN mint pressure + redemption flow — not just price/vol.
+ * Returns an all-zero snapshot on any error or when the oracle has no trades.
+ */
+export async function computeOracleFlow(
+    oracleId: string,
+    limit = 50
+): Promise<OracleFlow> {
+    let raw: RawTrade[];
+    try {
+        raw = await fetchJson<RawTrade[]>(`/trades/${oracleId}?limit=${limit}`);
+    } catch {
+        return EMPTY_FLOW;
+    }
+    if (!Array.isArray(raw) || raw.length === 0) return EMPTY_FLOW;
+
+    const QTY = 1_000_000;
+    let up = 0;
+    let down = 0;
+    let redeem = 0;
+    let oldest = Date.now();
+    for (const t of raw) {
+        if (t.checkpoint_timestamp_ms < oldest) oldest = t.checkpoint_timestamp_ms;
+        const qty = (t.quantity ?? 0) / QTY;
+        if (t.type === 'mint') {
+            if (t.lower_strike != null) continue; // range mint — no up/down dir
+            if (t.is_up) up += qty;
+            else down += qty;
+        } else {
+            redeem += (t.payout ?? t.quantity ?? 0) / QTY;
+        }
+    }
+    const tot = up + down;
+    return {
+        trades: raw.length,
+        upMintUsd: up,
+        downMintUsd: down,
+        redeemUsd: redeem,
+        netSkew: tot > 0 ? (up - down) / tot : 0,
+        windowMin: Math.max(1, (Date.now() - oldest) / 60_000),
+    };
+}
+
 /** Every PredictManager on the configured Predict instance (id + owner). */
 export async function listAllManagers(): Promise<
     { manager_id: string; owner: string }[]
