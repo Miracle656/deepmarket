@@ -147,6 +147,20 @@ export async function getManagerPositions(
     }
 }
 
+/** Every PredictManager on the configured Predict instance (id + owner). */
+export async function listAllManagers(): Promise<
+    { manager_id: string; owner: string }[]
+> {
+    try {
+        const raw = await fetchJson<ManagerListEntry[]>(`/managers`);
+        return raw
+            .filter((m) => typeof m.manager_id === 'string' && typeof m.owner === 'string')
+            .map((m) => ({ manager_id: m.manager_id, owner: m.owner as string }));
+    } catch {
+        return [];
+    }
+}
+
 const RAW_TO_USD = 1_000_000_000;
 const DUSDC_SCALE = 1_000_000;
 

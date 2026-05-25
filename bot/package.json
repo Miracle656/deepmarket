@@ -8,6 +8,7 @@
     "build": "tsc",
     "dev": "tsx watch src/index.ts",
     "start": "node dist/index.js",
+    "keeper": "tsx src/keeper.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
