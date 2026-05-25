@@ -1202,7 +1202,19 @@ body {
   font-size: 0.8rem;
 }
 
-/* Surface Studio CTA on the Predict page */
+/* Surface Studio + Oracle Health CTAs on the Predict page */
+.surface-cta-row {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.surface-cta-row .surface-cta {
+  flex: 1 1 0;
+  margin-bottom: 0;
+}
+@media (max-width: 720px) {
+  .surface-cta-row { flex-direction: column; }
+}
 .surface-cta {
   display: flex;
   align-items: center;

@@ -94,15 +94,25 @@ export default function PredictPage() {
                 </div>
             </div>
 
-            {/* Surface Studio CTA — standalone so it never crowds the header row */}
-            <button
-                className="surface-cta"
-                onClick={() => navigate('/surface')}
-                title="Live multi-expiry SVI surface + arb-free checker"
-            >
-                <span>📊 Surface Studio — live SVI surface &amp; arbitrage-free checker</span>
-                <span aria-hidden>→</span>
-            </button>
+            {/* Surface Studio + Oracle Health CTAs — standalone so they never crowd the header row */}
+            <div className="surface-cta-row">
+                <button
+                    className="surface-cta"
+                    onClick={() => navigate('/surface')}
+                    title="Live multi-expiry SVI surface + arb-free checker"
+                >
+                    <span>📊 Surface Studio — live SVI surface &amp; arbitrage-free checker</span>
+                    <span aria-hidden>→</span>
+                </button>
+                <button
+                    className="surface-cta"
+                    onClick={() => navigate('/health')}
+                    title="Per-oracle feed freshness monitor"
+                >
+                    <span>🩺 Oracle Health — live feed freshness</span>
+                    <span aria-hidden>→</span>
+                </button>
+            </div>
 
             {error && (
                 <div className="alert alert-error" style={{ marginTop: 16 }}>
