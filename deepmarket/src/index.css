@@ -824,6 +824,7 @@ body {
 
 /* ---- Predict vault / Earn panel ---- */
 .vault-view {
+  width: 100%;
   max-width: 760px;
   margin: 0 auto;
   padding: 28px 20px 48px;
@@ -831,6 +832,15 @@ body {
 }
 .vault-view .predict-title,
 .vault-view .predict-sub { word-wrap: break-word; overflow-wrap: anywhere; }
+
+/* Cap everything inside vault-view to the viewport on mobile — no matter
+   what padding/border/shadow a child has, it cannot extend past the right
+   edge. */
+@media (max-width: 640px) {
+  .vault-view,
+  .vault-view * { max-width: 100%; }
+  .content-area { overflow-x: hidden; }
+}
 .vault-panel {
   margin-top: 16px;
   padding: 18px 20px;
