@@ -1202,6 +1202,22 @@ body {
   font-size: 0.8rem;
 }
 
+/* ---- Surface Studio ---- */
+.surface-page {
+  max-width: 1140px;
+  margin: 0 auto;
+  padding: 24px 20px 56px;
+}
+.surface-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-top: 4px;
+}
+@media (max-width: 900px) {
+  .surface-grid { grid-template-columns: 1fr; }
+}
+
 /* ---- Sort segmented control ---- */
 .sort-seg {
   display: inline-flex;

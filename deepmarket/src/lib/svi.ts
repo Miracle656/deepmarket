@@ -79,6 +79,71 @@ function normCdf(x: number): number {
 }
 
 /**
+ * Butterfly arbitrage-free check. A smile is butterfly arb-free iff the total
+ * variance w(k) is convex in log-moneyness k (equivalently, the density implied
+ * by the smile is non-negative). We sample w over the moneyness range and
+ * compute the discrete second derivative numerically — any negative w''(k)
+ * flags a butterfly violation.
+ */
+export interface ArbCheckResult {
+    ok: boolean;
+    /** k-values where the check failed (empty if ok). */
+    violations: number[];
+    /** Sample count used. */
+    samples: number;
+}
+
+export function butterflyCheck(
+    p: SviParams,
+    samples = 81,
+    kMin = -0.5,
+    kMax = 0.5
+): ArbCheckResult {
+    const step = (kMax - kMin) / (samples - 1);
+    const w: number[] = new Array(samples);
+    for (let i = 0; i < samples; i++) {
+        w[i] = totalVariance(kMin + step * i, p);
+    }
+    const violations: number[] = [];
+    // Need at least 3 points for a finite-difference second derivative.
+    for (let i = 1; i < samples - 1; i++) {
+        const d2 = (w[i + 1] - 2 * w[i] + w[i - 1]) / (step * step);
+        // Strict convexity is w'' >= 0; allow a small numerical tolerance.
+        if (d2 < -1e-9) {
+            violations.push(kMin + step * i);
+        }
+    }
+    return { ok: violations.length === 0, violations, samples };
+}
+
+/**
+ * Calendar arbitrage-free check between two expiries (TA < TB). The smile is
+ * calendar arb-free at log-moneyness k iff total variance is non-decreasing in
+ * T at that k — i.e. w(k, TB) ≥ w(k, TA). Any k where the later expiry has
+ * LESS total variance is a violation.
+ *
+ * Note: total variance w = σ² × T (in the SVI parameterization here, `w`
+ * already includes T implicitly via the params fit at each expiry).
+ */
+export function calendarCheck(
+    pA: SviParams,
+    pB: SviParams,
+    samples = 81,
+    kMin = -0.5,
+    kMax = 0.5
+): ArbCheckResult {
+    const step = (kMax - kMin) / (samples - 1);
+    const violations: number[] = [];
+    for (let i = 0; i < samples; i++) {
+        const k = kMin + step * i;
+        const wA = totalVariance(k, pA);
+        const wB = totalVariance(k, pB);
+        if (wB + 1e-9 < wA) violations.push(k);
+    }
+    return { ok: violations.length === 0, violations, samples };
+}
+
+/**
  * Binary option fair price under Black-Scholes with the SVI smile. Pays $1 if
  * (isUp && S_T > K) or (!isUp && S_T < K). Picks sigma at k = ln(K/F).
  */

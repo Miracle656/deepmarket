@@ -88,6 +88,14 @@ export default function PredictPage() {
                         <RefreshCw size={14} className={refreshing ? 'spin' : ''} />
                         Refresh
                     </button>
+                    <button
+                        className="btn btn-primary btn-sm"
+                        onClick={() => navigate('/surface')}
+                        title="Live multi-expiry SVI surface + arb-free checker"
+                        style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+                    >
+                        Surface Studio →
+                    </button>
                 </div>
             </div>
 
