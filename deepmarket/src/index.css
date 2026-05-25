@@ -825,10 +825,23 @@ body {
 /* ---- Predict vault / Earn panel ---- */
 .vault-view {
   width: 100%;
-  max-width: 760px;
+  max-width: 1140px; /* fits supply+risk side by side on desktop */
   margin: 0 auto;
   padding: 28px 20px 48px;
   overflow-x: hidden; /* belt-and-suspenders: no horizontal scroll on phones */
+}
+
+/* Side-by-side supply / risk on desktop; stack on tablet and below. */
+.vault-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+  align-items: start;
+  margin-top: 16px;
+}
+.vault-grid .vault-panel { margin-top: 0; }
+@media (max-width: 900px) {
+  .vault-grid { grid-template-columns: 1fr; gap: 14px; }
 }
 .vault-view .predict-title,
 .vault-view .predict-sub { word-wrap: break-word; overflow-wrap: anywhere; }

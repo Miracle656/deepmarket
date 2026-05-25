@@ -24,8 +24,10 @@ export default function VaultView() {
                     </p>
                 </div>
             </div>
-            <VaultPanel />
-            <VaultRiskPanel />
+            <div className="vault-grid">
+                <VaultPanel />
+                <VaultRiskPanel />
+            </div>
         </div>
     );
 }

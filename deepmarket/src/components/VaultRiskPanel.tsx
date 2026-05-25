@@ -46,7 +46,7 @@ export default function VaultRiskPanel() {
 
     if (!stats) {
         return (
-            <div className="vault-panel" style={{ marginTop: 18 }}>
+            <div className="vault-panel">
                 <div className="vs-empty" style={{ minHeight: 120 }}>
                     {loading ? 'Loading vault risk state…' : 'Could not read vault state.'}
                 </div>
@@ -65,7 +65,7 @@ export default function VaultRiskPanel() {
     const refillPerMin = wl.refillRatePerMs > 0 ? (wl.refillRatePerMs * 60_000) / 1e6 : 0;
 
     return (
-        <div className="vault-panel" style={{ marginTop: 18 }}>
+        <div className="vault-panel">
             <div className="vault-head" style={{ alignItems: 'center', justifyContent: 'space-between' }}>
                 <div className="predict-eyebrow" style={{ margin: 0 }}>
                     <ShieldCheck size={14} /> Vault risk · live
