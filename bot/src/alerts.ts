@@ -85,6 +85,68 @@ export function alertOracleNearExpiry(
     };
 }
 
+/**
+ * Stale-feed warning — fires when an oracle the user has open positions on
+ * hasn't had a price update in `ageMin` minutes. Real Date.now() − on-chain
+ * timestamp delta; not a synthetic threshold. Comes from /oracles/:id/state
+ * tied to /health.
+ */
+export function alertOracleStale(
+    oracle: OracleSummary,
+    ageMin: number,
+    openPositions: number
+): Alert {
+    const text = [
+        `*⚠️ ${esc(oracle.underlying_asset)} feed is stale — ${esc(String(Math.round(ageMin)))}m since last on-chain update*`,
+        `You hold ${esc(String(openPositions))} open position${openPositions === 1 ? '' : 's'} on this oracle\\.`,
+        '',
+        `_Quotes on a stale feed may not reflect the real market\\. Wait for refresh, or check the health dashboard\\._`,
+    ].join('\n');
+    return {
+        text,
+        parse_mode: 'MarkdownV2',
+        reply_markup: {
+            inline_keyboard: [
+                [
+                    { text: '→ Oracle', url: predictUrl(oracle.oracle_id) },
+                    { text: '🩺 Health', url: `${CONFIG.WEB_URL}/health` },
+                ],
+            ],
+        },
+    };
+}
+
+/**
+ * Crowd-disagreement warning — the live trade tape on this oracle is leaning
+ * hard against the side the user is positioned on. Confirmation-only signal:
+ * we just surface it so the user can decide whether to size down / hedge /
+ * close. Same source the agent uses (computeOracleFlow).
+ */
+export function alertFlowAgainst(
+    oracle: OracleSummary,
+    userSide: 'UP' | 'DOWN',
+    netSkew: number,
+    tradeCount: number
+): Alert {
+    const crowd = netSkew > 0 ? 'UP' : 'DOWN';
+    const skewPct = (Math.abs(netSkew) * 100).toFixed(0);
+    const text = [
+        `*${esc(oracle.underlying_asset)} crowd is ${esc(skewPct)}% net ${esc(crowd)} — you hold ${esc(userSide)}*`,
+        `${esc(String(tradeCount))} recent mints disagree with your side\\.`,
+        '',
+        `_Not necessarily wrong — but worth checking if the crowd sees something you don't\\._`,
+    ].join('\n');
+    return {
+        text,
+        parse_mode: 'MarkdownV2',
+        reply_markup: {
+            inline_keyboard: [
+                [{ text: '→ Open oracle', url: predictUrl(oracle.oracle_id) }],
+            ],
+        },
+    };
+}
+
 export function alertOracleSettled(
     oracle: OracleSummary,
     settlementUsd: number,

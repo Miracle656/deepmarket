@@ -5,6 +5,7 @@ import type { Telegraf } from 'telegraf';
 import { CONFIG } from './config.js';
 import { listActive, patchSubscription, type Subscription } from './store.js';
 import {
+    computeOracleFlow,
     findManagerByOwner,
     getManagerPositions,
     getOracleStateBatch,
@@ -21,8 +22,10 @@ import {
     type SpotMarket,
 } from './spot.js';
 import {
+    alertFlowAgainst,
     alertOracleNearExpiry,
     alertOracleSettled,
+    alertOracleStale,
     alertSpotPriceMove,
     alertSpotResolved,
     alertStrikeCrossed,
@@ -31,6 +34,14 @@ import {
 
 const NEAR_EXPIRY_WINDOW_MS = 5 * 60_000; // 5 minutes
 const SPOT_PRICE_MOVE_THRESHOLD = 5; // 5 cent move triggers an alert
+
+// Phase 13 — feed-health + flow-disagreement alerts.
+// Thresholds match the OracleHealthPanel + agent-flow conventions.
+const STALE_MS = 10 * 60_000;            // >10m since last on-chain price update
+const STALE_COOLDOWN_MS = 60 * 60_000;   // re-alert per oracle/user at most hourly
+const FLOW_MIN_TRADES = 8;               // need a meaningful window before alerting
+const FLOW_AGAINST_SKEW = 0.3;           // ≥30% net crowd lean against user's side
+const FLOW_COOLDOWN_MS = 30 * 60_000;    // re-alert per oracle/user at most every 30m
 
 async function send(
     bot: Telegraf,
@@ -76,6 +87,17 @@ async function tickPredict(bot: Telegraf, subs: Subscription[]): Promise<void> {
         })
     );
 
+    // Cache: oracle_id → flow snapshot. We fetch flow only for oracles where
+    // at least one user has an open position, since the API call costs.
+    const flowCache = new Map<string, Awaited<ReturnType<typeof computeOracleFlow>>>();
+    async function flowFor(oracleId: string) {
+        const cached = flowCache.get(oracleId);
+        if (cached) return cached;
+        const flow = await computeOracleFlow(oracleId);
+        flowCache.set(oracleId, flow);
+        return flow;
+    }
+
     for (const oracle of oracles) {
         const state = states.get(oracle.oracle_id);
         if (!state) continue;
@@ -86,6 +108,11 @@ async function tickPredict(bot: Telegraf, subs: Subscription[]): Promise<void> {
         const now = Date.now();
         const msToExpiry = oracle.expiry - now;
         const wasSettled = oracle.status === 'settled';
+
+        // Feed staleness — real Date.now() − on-chain timestamp delta (ms).
+        const lastUpdateMs = state.latest_price?.onchain_timestamp ?? 0;
+        const ageMs = lastUpdateMs > 0 ? now - lastUpdateMs : Infinity;
+        const isStale = ageMs > STALE_MS;
 
         for (const { sub, positions } of userData) {
             const userPositions = positions.filter(
@@ -190,6 +217,67 @@ async function tickPredict(bot: Telegraf, subs: Subscription[]): Promise<void> {
                             ],
                         },
                     });
+                }
+            }
+
+            // 4. Stale-feed warning — only if user has open positions on
+            //    this oracle, and price update is older than STALE_MS.
+            //    Real on-chain timestamp delta, not a synthetic threshold.
+            const userOpen = userPositions.filter((p) => p.open_quantity > 0);
+            if (isStale && userOpen.length > 0) {
+                const seenStale = sub.seenStaleOracle ?? {};
+                const lastFired = seenStale[oracle.oracle_id] ?? 0;
+                if (now - lastFired > STALE_COOLDOWN_MS) {
+                    await send(
+                        bot,
+                        sub.chatId,
+                        alertOracleStale(oracle, ageMs / 60_000, userOpen.length)
+                    );
+                    await patchSubscription(sub.chatId, {
+                        seenStaleOracle: {
+                            ...seenStale,
+                            [oracle.oracle_id]: now,
+                        },
+                    });
+                }
+            }
+
+            // 5. Flow-against-you warning — if the live trade tape on this
+            //    oracle is leaning hard against the user's open side. Uses
+            //    the same computeOracleFlow source the agent reads.
+            if (userOpen.length > 0) {
+                const flow = await flowFor(oracle.oracle_id);
+                if (flow.trades >= FLOW_MIN_TRADES) {
+                    // Net UP exposure (sum of position sizes with sign).
+                    let upSize = 0;
+                    let downSize = 0;
+                    for (const p of userOpen) {
+                        if (p.is_up) upSize += p.open_quantity;
+                        else downSize += p.open_quantity;
+                    }
+                    if (upSize !== downSize) {
+                        const userSide: 'UP' | 'DOWN' = upSize > downSize ? 'UP' : 'DOWN';
+                        const against =
+                            (userSide === 'UP' && flow.netSkew < -FLOW_AGAINST_SKEW) ||
+                            (userSide === 'DOWN' && flow.netSkew > FLOW_AGAINST_SKEW);
+                        if (against) {
+                            const seenFlow = sub.seenFlowAlert ?? {};
+                            const lastFlow = seenFlow[oracle.oracle_id] ?? 0;
+                            if (now - lastFlow > FLOW_COOLDOWN_MS) {
+                                await send(
+                                    bot,
+                                    sub.chatId,
+                                    alertFlowAgainst(oracle, userSide, flow.netSkew, flow.trades)
+                                );
+                                await patchSubscription(sub.chatId, {
+                                    seenFlowAlert: {
+                                        ...seenFlow,
+                                        [oracle.oracle_id]: now,
+                                    },
+                                });
+                            }
+                        }
+                    }
                 }
             }
         }

@@ -33,6 +33,16 @@ export interface Subscription {
     seenSpotStatus: Record<string, string>;
     /** Per-Spot-market-id: last alerted YES price (to throttle moves). */
     lastSpotYesPrice: Record<string, number>;
+    /**
+     * Per-oracle: last time we DM'd a STALE-feed warning, so we don't spam
+     * the same user every poll while the feed stays stale.
+     */
+    seenStaleOracle?: Record<string, number>;
+    /**
+     * Per-oracle: last time we DM'd a crowd-disagreement (flow-against)
+     * warning, so we don't fire on every poll while flow stays one-sided.
+     */
+    seenFlowAlert?: Record<string, number>;
 
     // ── Bot trader (custodial) ────────────────────────────────────────
     /** bech32 `suiprivkey…` private key for the bot-managed wallet. */
