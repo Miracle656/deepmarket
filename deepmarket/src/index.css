@@ -1212,7 +1212,7 @@ body {
   flex: 1 1 0;
   margin-bottom: 0;
 }
-@media (max-width: 720px) {
+@media (max-width: 900px) {
   .surface-cta-row { flex-direction: column; }
 }
 .surface-cta {

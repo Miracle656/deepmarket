@@ -112,6 +112,14 @@ export default function PredictPage() {
                     <span>🩺 Oracle Health — live feed freshness</span>
                     <span aria-hidden>→</span>
                 </button>
+                <button
+                    className="surface-cta"
+                    onClick={() => navigate('/agents')}
+                    title="Public on-chain AI agent decision feed"
+                >
+                    <span>🤖 Agent Feed — live AI decisions on-chain</span>
+                    <span aria-hidden>→</span>
+                </button>
             </div>
 
             {error && (

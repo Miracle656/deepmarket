@@ -46,6 +46,10 @@ export interface AgentDecision {
     tsMs: number;
     /** The tx digest that emitted this decision. */
     digest: string;
+    /** Owner (the user who authorized the agent). */
+    owner?: string;
+    /** Agent address (the bot's custodial wallet that signed the tx). */
+    agent?: string;
 }
 
 /**
@@ -150,6 +154,58 @@ export async function getDecisionLog(
         return out;
     } catch (e) {
         console.warn('[agent-cap] getDecisionLog failed:', e);
+        return [];
+    }
+}
+
+/**
+ * Global live feed — every AgentDecisionMade across all caps, most recent
+ * first. The events table is small (one event per agent tick), so a single
+ * paginated query is enough for a dashboard.
+ */
+export async function getAllRecentDecisions(
+    client: SuiClient,
+    limit = 100,
+): Promise<AgentDecision[]> {
+    try {
+        const res = await client.queryEvents({
+            query: { MoveEventType: DECISION_EVENT },
+            limit: Math.min(limit, 500),
+            order: 'descending',
+        });
+        const out: AgentDecision[] = [];
+        for (const ev of res.data) {
+            const f = ev.parsedJson as
+                | {
+                      cap_id?: string;
+                      owner?: string;
+                      agent?: string;
+                      oracle_id?: string;
+                      is_mint?: boolean;
+                      direction_up?: boolean;
+                      strike?: string;
+                      cover_usd?: string;
+                      ts_ms?: string;
+                  }
+                | undefined;
+            if (!f?.cap_id) continue;
+            out.push({
+                capId: String(f.cap_id),
+                owner: f.owner ? String(f.owner) : undefined,
+                agent: f.agent ? String(f.agent) : undefined,
+                oracleId: String(f.oracle_id ?? ''),
+                isMint: Boolean(f.is_mint),
+                directionUp: Boolean(f.direction_up),
+                strikeUsd: Number(f.strike ?? 0) / STRIKE_SCALE,
+                coverUsd: Number(f.cover_usd ?? 0) / DUSDC_SCALE,
+                tsMs: Number(f.ts_ms ?? 0),
+                digest: ev.id.txDigest,
+            });
+            if (out.length >= limit) break;
+        }
+        return out;
+    } catch (e) {
+        console.warn('[agent-cap] getAllRecentDecisions failed:', e);
         return [];
     }
 }

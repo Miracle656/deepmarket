@@ -17,6 +17,7 @@ import VaultView from './components/VaultView';
 import LeaderboardPage from './components/LeaderboardPage';
 import SurfaceStudio from './components/SurfaceStudio';
 import OracleHealthPanel from './components/OracleHealthPanel';
+import GlobalAgentFeed from './components/GlobalAgentFeed';
 import AboutPage from './components/AboutPage';
 import Sparkline from './components/Sparkline';
 // rippleThemeToggle import removed — light mode is disabled in production.
@@ -369,6 +370,7 @@ function AppInner() {
             <Route path="/leaderboard" element={<LeaderboardPage />} />
             <Route path="/surface" element={<SurfaceStudio />} />
             <Route path="/health" element={<OracleHealthPanel />} />
+            <Route path="/agents" element={<GlobalAgentFeed />} />
             <Route path="/portfolio" element={<PortfolioPage markets={markets} />} />
             <Route path="/agent" element={<AgentAuthorizePage />} />
 
