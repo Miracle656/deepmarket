@@ -37,6 +37,7 @@ import {
 } from './store.js';
 import { startWatchers } from './watchers.js';
 import { startStrategyLoop, runStrategyTick } from './strategy.js';
+import { openTradePanel, registerTradePanel } from './trade-panel.js';
 import { isAgentAvailable } from './agent.js';
 import { getMemory } from './memory.js';
 import { isMemWalAvailable, pingMemWal } from './memwal.js';
@@ -757,11 +758,12 @@ async function main() {
 
     // open-by-id callbacks: when WEB_URL is non-HTTPS the URL buttons become
     // callback buttons; we acknowledge with a hint to open the browser.
+    // Tapping an oracle opens the in-Telegram trade panel (binary/range mint).
     bot.action(/^predict:open:(0x[a-f0-9]+)$/, async (ctx) => {
-        const m = ctx.match[1];
-        await ctx.answerCbQuery(`Open ${CONFIG.WEB_URL}/predict/${m}`);
-        await ctx.reply(`Open: ${CONFIG.WEB_URL}/predict/${m}`);
+        const oracleId = ctx.match[1];
+        if (oracleId) await openTradePanel(ctx, oracleId);
     });
+    registerTradePanel(bot);
 
     bot.action(/^spot:open:(\d+)$/, async (ctx) => {
         const id = ctx.match[1];

@@ -128,6 +128,66 @@ function buildDepositMintTx(opts: {
     return tx;
 }
 
+function buildDepositMintRangeTx(opts: {
+    managerId: string;
+    oracleId: string;
+    expiry: number;
+    lowerStrike: number;
+    higherStrike: number;
+    quantity: bigint;
+    depositAmount: bigint;
+    serviceFee: bigint;
+}): Transaction {
+    const tx = new Transaction();
+    const manager = tx.object(opts.managerId);
+
+    if (opts.depositAmount > 0n) {
+        const coin = tx.add(
+            coinWithBalance({ balance: opts.depositAmount, type: DUSDC })
+        );
+        tx.moveCall({
+            target: `${PKG}::predict_manager::deposit`,
+            typeArguments: [DUSDC],
+            arguments: [manager, coin],
+        });
+    }
+
+    const key = tx.moveCall({
+        target: `${PKG}::range_key::new`,
+        arguments: [
+            tx.pure.id(opts.oracleId),
+            tx.pure.u64(opts.expiry),
+            tx.pure.u64(opts.lowerStrike),
+            tx.pure.u64(opts.higherStrike),
+        ],
+    });
+
+    tx.moveCall({
+        target: `${PKG}::predict::mint_range`,
+        typeArguments: [DUSDC],
+        arguments: [
+            tx.object(PREDICT_OBJECT),
+            manager,
+            tx.object(opts.oracleId),
+            key,
+            tx.pure.u64(opts.quantity),
+            tx.object(CONFIG.CLOCK),
+        ],
+    });
+
+    if (opts.serviceFee > 0n && CONFIG.BOT_TREASURY_ADDRESS) {
+        const feeCoin = tx.add(
+            coinWithBalance({ balance: opts.serviceFee, type: DUSDC })
+        );
+        tx.transferObjects(
+            [feeCoin],
+            tx.pure.address(CONFIG.BOT_TREASURY_ADDRESS)
+        );
+    }
+
+    return tx;
+}
+
 // ──────────────────────────────────────────────────────────────────────────
 // State helpers (per-chatId)
 // ──────────────────────────────────────────────────────────────────────────
@@ -277,6 +337,60 @@ export async function mintBinary(
         digest: res.digest,
     });
     // Track lifetime fees per user for the bot menu display.
+    if (serviceFee > 0n) {
+        const sub = await getSubscription(chatId);
+        const prev = BigInt(sub?.botFeesPaid ?? 0);
+        await patchSubscription(chatId, {
+            botFeesPaid: Number(prev + serviceFee),
+        });
+    }
+    return { digest: res.digest, serviceFee };
+}
+
+/**
+ * Mint a range position for the user (pays out if settlement lands in the
+ * band). Mirror of {@link mintBinary} for the range_key / mint_range path.
+ */
+export async function mintRange(
+    chatId: number,
+    opts: {
+        oracleId: string;
+        expiry: number;
+        lowerStrike: number;
+        higherStrike: number;
+        quantity: bigint;
+        depositAmount: bigint;
+    }
+): Promise<{ digest: string; serviceFee: bigint }> {
+    const managerId = await getOrCreateUserManager(chatId);
+    const kp = await getUserKeypair(chatId);
+    if (!kp) throw new Error('No custodial wallet for this chat');
+    const sui = getSuiClient();
+
+    const serviceFee =
+        CONFIG.BOT_TREASURY_ADDRESS && CONFIG.BOT_FEE_BPS > 0
+            ? (opts.quantity * BigInt(CONFIG.BOT_FEE_BPS)) / 10000n
+            : 0n;
+
+    const tx = buildDepositMintRangeTx({ ...opts, managerId, serviceFee });
+    const res = await sui.signAndExecuteTransaction({
+        signer: kp,
+        transaction: tx,
+        options: { showEffects: true },
+    });
+    if (res.effects?.status.status !== 'success') {
+        const err = res.effects?.status.error ?? 'unknown';
+        throw new Error(`range mint tx failed: ${err}`);
+    }
+    await appendTrade(chatId, {
+        ts: Date.now(),
+        type: 'mint',
+        oracleId: opts.oracleId,
+        strike: opts.lowerStrike,
+        isUp: true,
+        quantity: Number(opts.quantity),
+        digest: res.digest,
+    });
     if (serviceFee > 0n) {
         const sub = await getSubscription(chatId);
         const prev = BigInt(sub?.botFeesPaid ?? 0);
