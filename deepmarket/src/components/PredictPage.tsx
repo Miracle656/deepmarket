@@ -3,12 +3,23 @@
 // Lists tradeable + recently-expired BTC oracles from the public Predict server.
 // Click an oracle to drill into its strike grid + mint UI.
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Activity, Clock, RefreshCw, TrendingUp, AlertCircle } from 'lucide-react';
+import {
+    Activity,
+    Clock,
+    RefreshCw,
+    TrendingUp,
+    AlertCircle,
+    BarChart3,
+    HeartPulse,
+    Bot,
+    ArrowRight,
+} from 'lucide-react';
 import {
     listTradeableOracles,
     getCachedTradeableOracles,
+    getOracleTradeCount,
     formatStrikeUsd,
     formatExpiry,
     statusColor,
@@ -22,7 +33,11 @@ export default function PredictPage() {
     const [oracles, setOracles] = useState<OracleSummary[] | null>(() => getCachedTradeableOracles());
     const [error, setError] = useState<string | null>(null);
     const [refreshing, setRefreshing] = useState(false);
-    const [sort, setSort] = useState<'soon' | 'far' | 'new'>('soon');
+    const [sort, setSort] = useState<'soon' | 'far' | 'new' | 'traded'>('soon');
+    // Per-oracle trade counts (active oracles only). Powers the "Most traded"
+    // sort + the per-card activity badge — most testnet oracles have zero
+    // trades, so this surfaces the live ones.
+    const [tradeCounts, setTradeCounts] = useState<Record<string, number>>({});
 
     const load = async () => {
         setError(null);
@@ -43,9 +58,42 @@ export default function PredictPage() {
         return () => clearInterval(interval);
     }, []);
 
+    // Stable key for the active set (sorted by id, independent of display sort)
+    // so the count fetch only refires when the active oracles actually change.
+    const activeOracleIds = useMemo(
+        () =>
+            (oracles ?? [])
+                .filter((o) => o.status === 'active')
+                .map((o) => o.oracle_id)
+                .sort(),
+        [oracles]
+    );
+    const activeIdsKey = activeOracleIds.join(',');
+
+    useEffect(() => {
+        if (activeOracleIds.length === 0) return;
+        let cancelled = false;
+        (async () => {
+            const entries = await Promise.all(
+                activeOracleIds.map(
+                    async (id) => [id, await getOracleTradeCount(id)] as const
+                )
+            );
+            if (!cancelled) setTradeCounts(Object.fromEntries(entries));
+        })();
+        return () => {
+            cancelled = true;
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [activeIdsKey]);
+
     const sortFn = (a: OracleSummary, b: OracleSummary) => {
         if (sort === 'soon') return a.expiry - b.expiry; // expiring first
         if (sort === 'far') return b.expiry - a.expiry; // furthest first
+        if (sort === 'traded')
+            return (
+                (tradeCounts[b.oracle_id] ?? 0) - (tradeCounts[a.oracle_id] ?? 0)
+            ); // most-traded first
         return (b.activated_at ?? 0) - (a.activated_at ?? 0); // newest first
     };
     const active = (oracles?.filter((o) => o.status === 'active') ?? []).sort(sortFn);
@@ -70,6 +118,7 @@ export default function PredictPage() {
                     <div className="sort-seg">
                         {([
                             ['soon', 'Expiring soon'],
+                            ['traded', 'Most traded'],
                             ['new', 'Newest'],
                             ['far', 'Furthest'],
                         ] as const).map(([k, label]) => (
@@ -101,24 +150,33 @@ export default function PredictPage() {
                     onClick={() => navigate('/surface')}
                     title="Live multi-expiry SVI surface + arb-free checker"
                 >
-                    <span>📊 Surface Studio — live SVI surface &amp; arbitrage-free checker</span>
-                    <span aria-hidden>→</span>
+                    <span className="surface-cta-label">
+                        <BarChart3 size={15} />
+                        Surface Studio — live SVI surface &amp; arbitrage-free checker
+                    </span>
+                    <ArrowRight size={15} aria-hidden />
                 </button>
                 <button
                     className="surface-cta"
                     onClick={() => navigate('/health')}
                     title="Per-oracle feed freshness monitor"
                 >
-                    <span>🩺 Oracle Health — live feed freshness</span>
-                    <span aria-hidden>→</span>
+                    <span className="surface-cta-label">
+                        <HeartPulse size={15} />
+                        Oracle Health — live feed freshness
+                    </span>
+                    <ArrowRight size={15} aria-hidden />
                 </button>
                 <button
                     className="surface-cta"
                     onClick={() => navigate('/agents')}
                     title="Public on-chain AI agent decision feed"
                 >
-                    <span>🤖 Agent Feed — live AI decisions on-chain</span>
-                    <span aria-hidden>→</span>
+                    <span className="surface-cta-label">
+                        <Bot size={15} />
+                        Agent Feed — live AI decisions on-chain
+                    </span>
+                    <ArrowRight size={15} aria-hidden />
                 </button>
             </div>
 
@@ -147,6 +205,7 @@ export default function PredictPage() {
                         count={active.length}
                         icon={<TrendingUp size={14} />}
                         oracles={active}
+                        tradeCounts={tradeCounts}
                         onPick={(id) => navigate(`/predict/${id}`)}
                     />
                     <Section
@@ -177,12 +236,14 @@ function Section({
     icon,
     oracles,
     onPick,
+    tradeCounts,
 }: {
     title: string;
     count: number;
     icon: React.ReactNode;
     oracles: OracleSummary[];
     onPick: (id: string) => void;
+    tradeCounts?: Record<string, number>;
 }) {
     if (oracles.length === 0) return null;
     return (
@@ -194,7 +255,12 @@ function Section({
             </div>
             <div className="predict-grid">
                 {oracles.map((o) => (
-                    <OracleCard key={o.oracle_id} oracle={o} onPick={onPick} />
+                    <OracleCard
+                        key={o.oracle_id}
+                        oracle={o}
+                        onPick={onPick}
+                        tradeCount={tradeCounts?.[o.oracle_id]}
+                    />
                 ))}
             </div>
         </div>
@@ -204,9 +270,11 @@ function Section({
 function OracleCard({
     oracle,
     onPick,
+    tradeCount,
 }: {
     oracle: OracleSummary;
     onPick: (id: string) => void;
+    tradeCount?: number;
 }) {
     return (
         <button
@@ -226,6 +294,26 @@ function OracleCard({
             <div className="predict-card-expiry">
                 <Clock size={12} />
                 <span>{formatExpiry(oracle.expiry)}</span>
+                {tradeCount !== undefined && (
+                    <span
+                        className="predict-card-trades"
+                        style={{
+                            marginLeft: 'auto',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 4,
+                            color:
+                                tradeCount > 0
+                                    ? 'var(--yes)'
+                                    : 'var(--text-muted)',
+                        }}
+                    >
+                        <Activity size={12} />
+                        {tradeCount > 0
+                            ? `${tradeCount}${tradeCount >= 100 ? '+' : ''} trades`
+                            : 'no trades'}
+                    </span>
+                )}
             </div>
             <div className="predict-card-strike">
                 <span className="predict-card-label">Min strike</span>

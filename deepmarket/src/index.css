@@ -42,6 +42,38 @@ html:has(.landing-root) body {
   overflow-x: hidden;
 }
 
+/* ── Global document scrollbar (landing page + any html/body scroll) ──
+   Panels (.content-area, .trade-sidebar, .modal) keep their own thin
+   ghost bars; this themes the main window bar that Chrome left default. */
+html,
+.landing-root {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(99, 132, 255, 0.45) transparent;
+}
+html::-webkit-scrollbar,
+.landing-root::-webkit-scrollbar {
+  width: 11px;
+  height: 11px;
+}
+html::-webkit-scrollbar-track,
+.landing-root::-webkit-scrollbar-track {
+  background: var(--bg-root, #04080f);
+}
+html::-webkit-scrollbar-thumb,
+.landing-root::-webkit-scrollbar-thumb {
+  border-radius: 99px;
+  /* transparent border + background-clip = a slim thumb with breathing room,
+     matching the hero's blue→violet candlesticks. */
+  border: 3px solid transparent;
+  background-clip: padding-box;
+  background-color: rgba(99, 132, 255, 0.4);
+  transition: background-color 0.2s ease;
+}
+html::-webkit-scrollbar-thumb:hover,
+.landing-root::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(124, 110, 245, 0.7);
+}
+
 /* ── Theme switch: smooth color morphing on all elements ── */
 html.theme-switching *:not([style*="border-radius: 50%"]),
 html.theme-switching *::before,
@@ -873,6 +905,64 @@ body {
   line-height: 1.5;
   max-width: 640px;
 }
+/* NAV mark-to-market headline */
+.vault-nav {
+  margin-bottom: 16px;
+  padding: 14px 16px;
+  border: 1px solid var(--border-base);
+  border-radius: 12px;
+  background:
+    radial-gradient(120% 160% at 0% 0%, rgba(0, 229, 160, 0.07), transparent 60%),
+    var(--bg-elevated, rgba(255, 255, 255, 0.02));
+}
+.vault-nav-label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  font-weight: 700;
+}
+.vault-nav-value {
+  margin-top: 2px;
+  font-size: 1.7rem;
+  font-weight: 700;
+  font-family: 'Space Mono', monospace;
+  font-variant-numeric: tabular-nums;
+  color: var(--yes);
+  line-height: 1.1;
+}
+.vault-nav-breakdown {
+  margin-top: 4px;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary, var(--text-muted));
+}
+.vault-nav-share {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--border-base);
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 0.82rem;
+  font-variant-numeric: tabular-nums;
+}
+.vault-nav-share-val {
+  font-family: 'Space Mono', monospace;
+  font-weight: 700;
+}
+.vault-nav-up {
+  color: var(--yes);
+  font-weight: 600;
+}
+.vault-nav-down {
+  color: var(--no);
+  font-weight: 600;
+}
+
 .vault-stats {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -1028,6 +1118,28 @@ body {
   padding: 4px 0;
   font-size: 0.85rem;
   font-variant-numeric: tabular-nums;
+}
+
+/* Withdrawal-limiter live viz */
+.wl-big {
+  margin-top: 8px;
+  font-size: 1.25rem;
+  font-weight: 700;
+  font-family: 'Space Mono', monospace;
+  font-variant-numeric: tabular-nums;
+}
+.wl-live-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--yes);
+  box-shadow: 0 0 0 0 rgba(0, 229, 160, 0.55);
+  animation: wl-live-pulse 1.8s ease-out infinite;
+}
+@keyframes wl-live-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(0, 229, 160, 0.5); }
+  70% { box-shadow: 0 0 0 6px rgba(0, 229, 160, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(0, 229, 160, 0); }
 }
 
 /* ---- Predict detail chart tabs ---- */
@@ -1237,6 +1349,118 @@ body {
 .surface-cta:hover {
   background: var(--yes-dim, rgba(0, 229, 160, 0.12));
   border-color: var(--yes);
+}
+.surface-cta-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.surface-cta-label svg {
+  flex-shrink: 0;
+  color: var(--yes);
+}
+
+/* ---- Oracle hero strip (predict.fun-style) ---- */
+.predict-hero {
+  display: flex;
+  align-items: stretch;
+  gap: 28px;
+  margin-top: 16px;
+  padding: 18px 22px;
+  border: 1px solid var(--border-base);
+  border-radius: 16px;
+  background:
+    radial-gradient(120% 140% at 100% 0%, rgba(0, 229, 160, 0.06), transparent 60%),
+    var(--surface-raised, rgba(255, 255, 255, 0.02));
+}
+.predict-hero-cell {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  min-width: 0;
+}
+.predict-hero-right {
+  margin-left: auto;
+  align-items: flex-end;
+  text-align: right;
+}
+.predict-hero-label {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.predict-hero-value {
+  font-size: 26px;
+  font-weight: 700;
+  font-family: 'Space Mono', monospace;
+  line-height: 1.1;
+}
+.predict-hero-value.accent {
+  color: var(--yes);
+}
+.predict-hero-sub {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: 'Space Mono', monospace;
+}
+.predict-hero-countdown {
+  font-size: 30px;
+  font-weight: 700;
+  font-family: 'Space Mono', monospace;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 2px;
+}
+.predict-hero-countdown .sep {
+  opacity: 0.45;
+  font-weight: 400;
+}
+.predict-hero-countdown.muted {
+  color: var(--text-muted);
+}
+.predict-hero-status {
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: capitalize;
+}
+.predict-live-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--no, #ff4d6d);
+  text-transform: uppercase;
+}
+.predict-live-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--no, #ff4d6d);
+  box-shadow: 0 0 0 0 rgba(255, 77, 109, 0.6);
+  animation: predict-live-pulse 1.6s ease-out infinite;
+}
+@keyframes predict-live-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(255, 77, 109, 0.55); }
+  70% { box-shadow: 0 0 0 7px rgba(255, 77, 109, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(255, 77, 109, 0); }
+}
+@media (max-width: 720px) {
+  .predict-hero {
+    flex-wrap: wrap;
+    gap: 16px;
+  }
+  .predict-hero-right {
+    margin-left: 0;
+    align-items: flex-start;
+    text-align: left;
+  }
 }
 
 /* ---- Surface Studio ---- */

@@ -34,6 +34,8 @@ import {
     getOracleState,
     getManagerSummary,
     getManagerPositions,
+    getManagerRangePositions,
+    getOracleTrades,
     getCachedManagerId,
     setCachedManagerId,
     findManagerByOwner,
@@ -45,6 +47,7 @@ import {
     type OracleState,
     type ManagerSummary,
     type Position,
+    type RangePosition,
 } from '../lib/predict';
 import {
     buildCreateManagerTx,
@@ -53,6 +56,7 @@ import {
     buildPreviewTx,
     buildRangePreviewTx,
     buildRedeemTx,
+    buildRedeemRangeTx,
     buildWithdrawTx,
 } from '../lib/predict-tx';
 import { CONFIG } from '../lib/config';
@@ -82,6 +86,10 @@ export default function PredictDetailPage({ theme }: PredictDetailPageProps) {
     const [managerId, setManagerId] = useState<string | null>(null);
     const [manager, setManager] = useState<ManagerSummary | null>(null);
     const [positions, setPositions] = useState<Position[]>([]);
+    // Range positions are on-chain only (server omits them) — read separately.
+    const [rangePositions, setRangePositions] = useState<RangePosition[]>([]);
+    // Total dUSDC transacted on this oracle (mint cost + redeem payout) — hero strip.
+    const [volume, setVolume] = useState<number | null>(null);
 
     // chart view: price line / SVI vol smile / candles / trade tape
     const [chartView, setChartView] = useState<'price' | 'smile' | 'candles' | 'trades'>('price');
@@ -118,6 +126,34 @@ export default function PredictDetailPage({ theme }: PredictDetailPageProps) {
         };
     }, [oracleId]);
 
+    // ── total volume on this oracle (mint cost + redeem payout) ──────────
+    useEffect(() => {
+        if (!oracleId) return;
+        let cancelled = false;
+        const loadVol = () => {
+            getOracleTrades(oracleId, 200)
+                .then((trades) => {
+                    if (cancelled) return;
+                    const v = trades.reduce(
+                        (sum, t) =>
+                            sum +
+                            (t.side === 'mint' ? t.cost ?? 0 : t.payout ?? 0),
+                        0
+                    );
+                    setVolume(v);
+                })
+                .catch(() => {
+                    if (!cancelled) setVolume(null);
+                });
+        };
+        loadVol();
+        const interval = setInterval(loadVol, 30_000);
+        return () => {
+            cancelled = true;
+            clearInterval(interval);
+        };
+    }, [oracleId]);
+
     // ── load wallet dUSDC ────────────────────────────────────────────────
     useEffect(() => {
         if (!account?.address) {
@@ -147,6 +183,7 @@ export default function PredictDetailPage({ theme }: PredictDetailPageProps) {
             setManagerId(null);
             setManager(null);
             setPositions([]);
+            setRangePositions([]);
             return;
         }
         let cancelled = false;
@@ -164,13 +201,17 @@ export default function PredictDetailPage({ theme }: PredictDetailPageProps) {
             setManagerId(id);
             if (id) {
                 try {
-                    const [s, p] = await Promise.all([
+                    const [s, p, rp] = await Promise.all([
                         getManagerSummary(id),
                         getManagerPositions(id).catch(() => [] as Position[]),
+                        getManagerRangePositions(sui, id).catch(
+                            () => [] as RangePosition[]
+                        ),
                     ]);
                     if (!cancelled) {
                         setManager(s);
                         setPositions(p);
+                        setRangePositions(rp);
                     }
                 } catch {
                     /* indexer may lag — keep id, refresh later */
@@ -178,12 +219,13 @@ export default function PredictDetailPage({ theme }: PredictDetailPageProps) {
             } else {
                 setManager(null);
                 setPositions([]);
+                setRangePositions([]);
             }
         })();
         return () => {
             cancelled = true;
         };
-    }, [account?.address]);
+    }, [account?.address, sui]);
 
     // ── strike grid: 11 ticks around the rounded spot ────────────────────
     const strikes = useMemo<bigint[]>(() => {
@@ -395,8 +437,8 @@ export default function PredictDetailPage({ theme }: PredictDetailPageProps) {
                 options: { showEffects: true },
             });
 
-            // Refresh wallet + manager summary + positions
-            const [balance, mgr, pos] = await Promise.all([
+            // Refresh wallet + manager summary + positions (binary + range)
+            const [balance, mgr, pos, rpos] = await Promise.all([
                 sui
                     .getBalance({
                         owner: account.address,
@@ -408,10 +450,14 @@ export default function PredictDetailPage({ theme }: PredictDetailPageProps) {
                 getManagerPositions(activeManagerId).catch(
                     () => [] as Position[]
                 ),
+                getManagerRangePositions(sui, activeManagerId).catch(
+                    () => [] as RangePosition[]
+                ),
             ]);
             setDusdc(balance);
             if (mgr) setManager(mgr);
             setPositions(pos);
+            setRangePositions(rpos);
             setTxMsg(`Position minted · ${res.digest.slice(0, 10)}…`);
         } catch (e) {
             console.error(e);
@@ -474,16 +520,8 @@ export default function PredictDetailPage({ theme }: PredictDetailPageProps) {
                             {state.oracle.underlying_asset} expiring{' '}
                             {formatExpiry(state.oracle.expiry)}
                         </h1>
-                        <div
-                            className="predict-card-status"
-                            style={{
-                                color: statusColor(state.oracle.status),
-                                fontSize: 13,
-                                marginTop: 4,
-                            }}
-                        >
-                            {state.oracle.status}
-                        </div>
+
+                        <OracleHero state={state} volume={volume} />
 
                         <div className="pchart-tabs" style={{ marginTop: 20 }}>
                             {([
@@ -669,7 +707,11 @@ export default function PredictDetailPage({ theme }: PredictDetailPageProps) {
 
                         <div className="predict-section-h">
                             <Lock size={14} />
-                            <span>Mint a binary position</span>
+                            <span>
+                                {mode === 'range'
+                                    ? 'Mint a range position'
+                                    : 'Mint a binary position'}
+                            </span>
                         </div>
 
                         {!account ? (
@@ -682,17 +724,32 @@ export default function PredictDetailPage({ theme }: PredictDetailPageProps) {
                                     on this oracle.
                                 </div>
                             </div>
-                        ) : state.oracle.status !== 'active' ? (
+                        ) : state.oracle.status !== 'active' ||
+                          Date.now() >= state.oracle.expiry ? (
                             <div className="predict-mint-card">
                                 <div
                                     className="alert alert-info"
                                     style={{ fontSize: 13, lineHeight: 1.6 }}
                                 >
-                                    Oracle is{' '}
-                                    <strong>{state.oracle.status}</strong> —
-                                    minting is disabled. Only{' '}
-                                    <code>active</code> oracles accept new
-                                    positions.
+                                    {Date.now() >= state.oracle.expiry &&
+                                    state.oracle.status === 'active' ? (
+                                        <>
+                                            Oracle has{' '}
+                                            <strong>expired</strong> — awaiting
+                                            settlement. Minting is closed; redeem
+                                            open positions once it settles.
+                                        </>
+                                    ) : (
+                                        <>
+                                            Oracle is{' '}
+                                            <strong>
+                                                {state.oracle.status}
+                                            </strong>{' '}
+                                            — minting is disabled. Only{' '}
+                                            <code>active</code> oracles accept
+                                            new positions.
+                                        </>
+                                    )}
                                 </div>
                             </div>
                         ) : (
@@ -1059,6 +1116,60 @@ export default function PredictDetailPage({ theme }: PredictDetailPageProps) {
                                 busy={busy}
                             />
                         )}
+
+                        {managerId && rangePositions.length > 0 && (
+                            <RangePositionsPanel
+                                positions={rangePositions}
+                                currentOracleId={state.oracle.oracle_id}
+                                onRedeem={async (rp) => {
+                                    if (!account || !managerId) return;
+                                    setBusy(true);
+                                    setTxMsg(null);
+                                    try {
+                                        const tx = buildRedeemRangeTx({
+                                            managerId,
+                                            oracleId: rp.oracleId,
+                                            expiry: rp.expiry,
+                                            lowerStrike: rp.lowerStrike,
+                                            higherStrike: rp.higherStrike,
+                                            quantity: BigInt(rp.openQuantity),
+                                        });
+                                        const res = await signAndExec({
+                                            transaction: tx,
+                                        });
+                                        await sui.waitForTransaction({
+                                            digest: res.digest,
+                                            options: { showEffects: true },
+                                        });
+                                        const [mgr, rpos] = await Promise.all([
+                                            getManagerSummary(managerId).catch(
+                                                () => null
+                                            ),
+                                            getManagerRangePositions(
+                                                sui,
+                                                managerId
+                                            ).catch(() => [] as RangePosition[]),
+                                        ]);
+                                        if (mgr) setManager(mgr);
+                                        setRangePositions(rpos);
+                                        setTxMsg(
+                                            `Range position redeemed · ${res.digest.slice(0, 10)}…`
+                                        );
+                                    } catch (e) {
+                                        console.error(e);
+                                        setTxMsg(
+                                            'Range redeem failed: ' +
+                                                (e instanceof Error
+                                                    ? e.message
+                                                    : String(e))
+                                        );
+                                    } finally {
+                                        setBusy(false);
+                                    }
+                                }}
+                                busy={busy}
+                            />
+                        )}
                     </aside>
                 </div>
             )}
@@ -1245,6 +1356,189 @@ function PositionRow({
                     {redeemLabel}
                 </button>
             )}
+        </div>
+    );
+}
+
+// Range positions live on-chain only (server omits them). Simpler than the
+// binary row — we have the band + open cover, but no server-side mark/PnL.
+function RangePositionsPanel({
+    positions,
+    currentOracleId,
+    onRedeem,
+    busy,
+}: {
+    positions: RangePosition[];
+    currentOracleId: string;
+    onRedeem: (p: RangePosition) => Promise<void>;
+    busy: boolean;
+}) {
+    const onThis = positions.filter((p) => p.oracleId === currentOracleId);
+    const others = positions.filter((p) => p.oracleId !== currentOracleId);
+    return (
+        <>
+            <div className="predict-section-h" style={{ marginTop: 24 }}>
+                <Activity size={14} />
+                <span>Your range positions</span>
+            </div>
+            <div className="predict-mint-card">
+                {onThis.length > 0 && (
+                    <div className="predict-pos-section">
+                        <div className="predict-pos-section-h">This oracle</div>
+                        {onThis.map((p) => (
+                            <RangePositionRow
+                                key={`${p.oracleId}-${p.lowerStrike}-${p.higherStrike}`}
+                                p={p}
+                                onRedeem={onRedeem}
+                                busy={busy}
+                            />
+                        ))}
+                    </div>
+                )}
+                {others.length > 0 && (
+                    <div className="predict-pos-section">
+                        <div className="predict-pos-section-h">Other oracles</div>
+                        {others.slice(0, 5).map((p) => (
+                            <RangePositionRow
+                                key={`${p.oracleId}-${p.lowerStrike}-${p.higherStrike}`}
+                                p={p}
+                                muted
+                            />
+                        ))}
+                    </div>
+                )}
+            </div>
+        </>
+    );
+}
+
+function RangePositionRow({
+    p,
+    muted,
+    onRedeem,
+    busy,
+}: {
+    p: RangePosition;
+    muted?: boolean;
+    onRedeem?: (p: RangePosition) => Promise<void>;
+    busy?: boolean;
+}) {
+    const qty = p.openQuantity / 10 ** CONFIG.DUSDC_DECIMALS;
+    return (
+        <div className={`predict-pos-row ${muted ? 'muted' : ''}`}>
+            <div className="predict-pos-strike">
+                <span className="predict-pos-dir up">RANGE</span>
+                {formatStrikeUsd(p.lowerStrike)} – {formatStrikeUsd(p.higherStrike)}
+            </div>
+            <div className="predict-pos-meta">
+                <span>${qty.toFixed(2)} cover</span>
+                <span>exp {formatExpiry(p.expiry)}</span>
+            </div>
+            {onRedeem && (
+                <button
+                    type="button"
+                    className="predict-pos-redeem sell"
+                    disabled={busy}
+                    onClick={() => onRedeem(p)}
+                >
+                    Redeem range
+                </button>
+            )}
+        </div>
+    );
+}
+
+// predict.fun-style hero strip: current price, total volume, Live badge, and a
+// live ticking countdown to expiry. All real data — spot/forward from the
+// oracle feed, volume from the trade tape, countdown from on-chain expiry.
+function OracleHero({
+    state,
+    volume,
+}: {
+    state: OracleState;
+    volume: number | null;
+}) {
+    const [now, setNow] = useState(() => Date.now());
+    useEffect(() => {
+        const id = setInterval(() => setNow(Date.now()), 1000);
+        return () => clearInterval(id);
+    }, []);
+
+    const msLeft = state.oracle.expiry - now;
+    const live = state.oracle.status === 'active' && msLeft > 0;
+    // Server lags: it can still report `active` after expiry passes. Derive a
+    // truthful label so we don't show "Active" on a market that's clearly over.
+    const awaitingSettlement = state.oracle.status === 'active' && msLeft <= 0;
+    const statusLabel = awaitingSettlement
+        ? 'Awaiting settlement'
+        : state.oracle.status;
+    const statusHue = awaitingSettlement
+        ? '#f5a623'
+        : statusColor(state.oracle.status);
+    const totalSecs = Math.max(0, Math.floor(msLeft / 1000));
+    const hh = Math.floor(totalSecs / 3600);
+    const mm = Math.floor((totalSecs % 3600) / 60);
+    const ss = totalSecs % 60;
+    const pad = (n: number) => String(n).padStart(2, '0');
+
+    const spot = state.latest_price
+        ? formatStrikeUsd(state.latest_price.spot)
+        : '—';
+    const forward = state.latest_price
+        ? formatStrikeUsd(state.latest_price.forward)
+        : '—';
+
+    return (
+        <div className="predict-hero">
+            <div className="predict-hero-cell">
+                <div className="predict-hero-label">Current price</div>
+                <div className="predict-hero-value accent">{spot}</div>
+                <div className="predict-hero-sub">Forward {forward}</div>
+            </div>
+            <div className="predict-hero-cell">
+                <div className="predict-hero-label">Total volume</div>
+                <div className="predict-hero-value">
+                    {volume != null
+                        ? `$${volume.toLocaleString('en-US', { maximumFractionDigits: 2 })}`
+                        : '—'}
+                </div>
+                <div className="predict-hero-sub">
+                    min strike {formatStrikeUsd(state.oracle.min_strike)}
+                </div>
+            </div>
+            <div className="predict-hero-cell predict-hero-right">
+                {live ? (
+                    <span className="predict-live-badge">
+                        <span className="predict-live-dot" /> Live
+                    </span>
+                ) : (
+                    <span
+                        className="predict-hero-status"
+                        style={{ color: statusHue }}
+                    >
+                        {statusLabel}
+                    </span>
+                )}
+                <div className="predict-hero-label" style={{ marginTop: 8 }}>
+                    Time left
+                </div>
+                <div
+                    className={`predict-hero-countdown ${live ? '' : 'muted'}`}
+                >
+                    {hh > 0 && (
+                        <>
+                            <span>{pad(hh)}</span>
+                            <span className="sep">:</span>
+                        </>
+                    )}
+                    <span>{pad(mm)}</span>
+                    <span className="sep">:</span>
+                    <span>{pad(ss)}</span>
+                </div>
+                <div className="predict-hero-sub">
+                    {hh > 0 ? 'HRS · MIN · SEC' : 'MIN · SEC'}
+                </div>
+            </div>
         </div>
     );
 }

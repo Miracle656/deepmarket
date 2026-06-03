@@ -212,6 +212,111 @@ export async function getManagerPositions(managerId: string): Promise<Position[]
 }
 
 /**
+ * Lightweight trade count for an oracle, capped at `limit`. Used to rank
+ * oracles by activity ("Most traded" sort) and badge cards — most testnet
+ * oracles have zero trades, so this surfaces the live ones. Returns 0 on error.
+ */
+export async function getOracleTradeCount(
+    oracleId: string,
+    limit = 100
+): Promise<number> {
+    try {
+        const raw = await fetchJson<unknown[]>(`/trades/${oracleId}?limit=${limit}`);
+        return Array.isArray(raw) ? raw.length : 0;
+    } catch {
+        return 0;
+    }
+}
+
+/**
+ * An open range position. Range positions are NOT exposed by the Predict
+ * server's /positions/summary endpoint (binary-only) — they live on-chain in
+ * the manager's `range_positions: Table<RangeKey, u64>`. Strikes are raw
+ * 1e9-scaled (feed straight into formatStrikeUsd / range_key::new);
+ * openQuantity is raw base units (1e6).
+ */
+export interface RangePosition {
+    oracleId: string;
+    expiry: number;
+    lowerStrike: number; // raw 1e9
+    higherStrike: number; // raw 1e9
+    openQuantity: number; // raw 1e6
+}
+
+type RangeFieldContent = {
+    fields?: {
+        name?: {
+            fields?: {
+                oracle_id?: string;
+                expiry?: string;
+                lower_strike?: string;
+                higher_strike?: string;
+            };
+        };
+        value?: string;
+    };
+};
+
+/**
+ * Read a manager's open range positions directly from chain. Walks the
+ * `range_positions` Table's dynamic fields (each name is a RangeKey, each
+ * value the open u64 quantity). Returns [] on any error or empty table.
+ */
+export async function getManagerRangePositions(
+    client: SuiClient,
+    managerId: string
+): Promise<RangePosition[]> {
+    try {
+        const obj = await client.getObject({
+            id: managerId,
+            options: { showContent: true },
+        });
+        const content = obj.data?.content as
+            | { fields?: { range_positions?: { fields?: { id?: { id?: string }; size?: string } } } }
+            | undefined;
+        const tableId = content?.fields?.range_positions?.fields?.id?.id;
+        const size = Number(content?.fields?.range_positions?.fields?.size ?? 0);
+        if (!tableId || size === 0) return [];
+
+        // Collect every dynamic-field id (paginate the table).
+        const fieldIds: string[] = [];
+        let cursor: string | null = null;
+        do {
+            const page = await client.getDynamicFields({ parentId: tableId, cursor });
+            for (const f of page.data) fieldIds.push(f.objectId);
+            cursor = page.hasNextPage ? page.nextCursor ?? null : null;
+        } while (cursor);
+        if (fieldIds.length === 0) return [];
+
+        // Fetch field objects (chunked — multiGetObjects caps at 50) to read
+        // each RangeKey + its u64 quantity.
+        const out: RangePosition[] = [];
+        for (let i = 0; i < fieldIds.length; i += 50) {
+            const objs = await client.multiGetObjects({
+                ids: fieldIds.slice(i, i + 50),
+                options: { showContent: true },
+            });
+            for (const o of objs) {
+                const c = o.data?.content as RangeFieldContent | undefined;
+                const key = c?.fields?.name?.fields;
+                const qty = Number(c?.fields?.value ?? 0);
+                if (!key || !key.oracle_id || qty <= 0) continue;
+                out.push({
+                    oracleId: key.oracle_id,
+                    expiry: Number(key.expiry ?? 0),
+                    lowerStrike: Number(key.lower_strike ?? 0),
+                    higherStrike: Number(key.higher_strike ?? 0),
+                    openQuantity: qty,
+                });
+            }
+        }
+        return out;
+    } catch {
+        return [];
+    }
+}
+
+/**
  * Find an existing PredictManager owned by `address` by scanning /managers.
  * Cold-start fallback when the localStorage cache is empty. Returns only the
  * first manager; use `findAllManagersByOwner` to see every manager.
@@ -267,6 +372,10 @@ export interface VaultStats {
     totalShares: number;
     /** vaultValue in raw base units — used to value LP shares precisely. */
     vaultValueRaw: number;
+    /** NAV per PLP share = vaultValueRaw / totalShares. PLP and dUSDC share the
+     *  same 6-decimal scale, so this is both $ per PLP and the appreciation
+     *  multiple from $1.00 par (e.g. 1.0023 = +0.23%). 1 when no shares minted. */
+    sharePrice: number;
     /** Configured cap on total exposure (% of vault, 0–1). 1e9-scaled on-chain. */
     maxExposurePct: number;
     /** Withdrawal token-bucket state. */
@@ -357,6 +466,7 @@ export async function getVaultStats(client: SuiClient): Promise<VaultStats | nul
             available: Math.max(0, balance - maxPayout) / D,
             totalShares,
             vaultValueRaw,
+            sharePrice: totalShares > 0 ? vaultValueRaw / totalShares : 1,
             maxExposurePct: maxExposureRaw / 1e9,
             withdrawalLimiter: {
                 enabled: Boolean(wl?.enabled),

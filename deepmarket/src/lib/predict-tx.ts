@@ -336,3 +336,47 @@ export function buildRangePreviewTx(args: {
     });
     return tx;
 }
+
+export interface RedeemRangeParams {
+    managerId: string;
+    oracleId: string;
+    expiry: number;
+    /** 1e9-scaled lower strike (must match the minted key). */
+    lowerStrike: number;
+    /** 1e9-scaled higher strike (must match the minted key). */
+    higherStrike: number;
+    /** Quantity to redeem in dUSDC base units (max = position open quantity). */
+    quantity: bigint;
+}
+
+/**
+ * Redeem a range position. Mirror of {@link buildRedeemTx} for the
+ * `range_key` / `predict::redeem_range` path. Payout flows back into the
+ * PredictManager's dUSDC balance. Works pre-expiry (sell) and after
+ * settlement (claim) — the permissionless path lives in the bot keeper.
+ */
+export function buildRedeemRangeTx(p: RedeemRangeParams): Transaction {
+    const tx = new Transaction();
+    const key = tx.moveCall({
+        target: `${PKG}::range_key::new`,
+        arguments: [
+            tx.pure.id(p.oracleId),
+            tx.pure.u64(p.expiry),
+            tx.pure.u64(p.lowerStrike),
+            tx.pure.u64(p.higherStrike),
+        ],
+    });
+    tx.moveCall({
+        target: `${PKG}::predict::redeem_range`,
+        typeArguments: [DUSDC],
+        arguments: [
+            tx.object(PREDICT),
+            tx.object(p.managerId),
+            tx.object(p.oracleId),
+            key,
+            tx.pure.u64(p.quantity),
+            tx.object(CONFIG.CLOCK),
+        ],
+    });
+    return tx;
+}
