@@ -14,6 +14,7 @@ import {
     decide,
     isAgentAvailable,
     snapStrikeUsdToRaw,
+    EDGE_THRESHOLD,
     type AgentContext,
 } from './agent.js';
 import { quoteLadder, type StrikeQuote } from './quote.js';
@@ -676,6 +677,25 @@ export function startStrategyLoop(bot: Telegraf): () => void {
         console.log(
             `[strategy] oracle ${oracle.oracle_id.slice(0, 10)} — ${quotes.length} quotable strikes`
         );
+
+        // Pre-LLM edge gate (oracle-level). A mint needs p − implied ≥
+        // EDGE_THRESHOLD and p ≤ 1, so the CHEAPEST implied across the whole
+        // table must be ≤ 1 − EDGE_THRESHOLD for any edge to be possible. When
+        // the table is priced at cost/payout ≈ 1 (implied ~100% both sides),
+        // no leg can EVER clear the bar — so skip the agent entirely instead of
+        // burning one Claude call per user every tick on a guaranteed pass.
+        // (Settled-position redemptions above already ran, so funds still free up.)
+        if (quotes.length > 0) {
+            const minImplied = Math.min(...quotes.map((q) => q.impliedProb));
+            if (minImplied > 1 - EDGE_THRESHOLD) {
+                console.log(
+                    `[strategy] oracle ${oracle.oracle_id.slice(0, 10)} has no achievable edge ` +
+                        `(min implied ${(minImplied * 100).toFixed(0)}% > ${((1 - EDGE_THRESHOLD) * 100).toFixed(0)}%) — ` +
+                        `skipping LLM for all users this tick`
+                );
+                return;
+            }
+        }
 
         for (const sub of subs) {
             if (!sub.botManagerId) continue;
