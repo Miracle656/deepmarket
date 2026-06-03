@@ -69,7 +69,29 @@ function maxCoverUsd(): number {
     return Math.max(CONFIG.STRATEGY_QTY_USD * 3, 1.5);
 }
 
-async function pickOracle(): Promise<OracleSummary | null> {
+/** How many eligible oracles to probe per tick looking for an edgy table. */
+const MAX_ORACLE_SCAN = 5;
+
+interface PickedOracle {
+    oracle: OracleSummary;
+    state: OracleState;
+    quotes: StrikeQuote[];
+    /** True when some strike is priced ≤ 1 − EDGE_THRESHOLD (edge achievable). */
+    achievable: boolean;
+}
+
+/**
+ * Pick an oracle worth evaluating. Scans up to MAX_ORACLE_SCAN eligible
+ * oracles (soonest-expiry first), quoting each ladder, and returns the FIRST
+ * whose table has an achievable edge (cheapest implied ≤ 1 − EDGE_THRESHOLD).
+ * Most testnet oracles are priced at cost/payout ≈ 1 (implied ~100% both
+ * sides) where no edge can ever exist — this stops the agent from fixating on
+ * the soonest oracle and lets it find a tradeable one. Falls back to the
+ * soonest (with its quotes, achievable=false) so the tick can still heartbeat.
+ */
+async function pickTradeableOracle(
+    senderAddr: string | undefined
+): Promise<PickedOracle | null> {
     let oracles: OracleSummary[];
     try {
         oracles = await listActiveOracles();
@@ -80,8 +102,43 @@ async function pickOracle(): Promise<OracleSummary | null> {
     // Skip oracles within 2 min of expiry — too close to settlement.
     const eligible = oracles
         .filter((o) => o.status === 'active' && o.expiry > now + 2 * 60_000)
-        .sort((a, b) => a.expiry - b.expiry);
-    return eligible[0] ?? null;
+        .sort((a, b) => a.expiry - b.expiry)
+        .slice(0, MAX_ORACLE_SCAN);
+    if (eligible.length === 0) return null;
+
+    let fallback: PickedOracle | null = null;
+    for (const oracle of eligible) {
+        let state: OracleState;
+        try {
+            state = await getOracleState(oracle.oracle_id);
+        } catch {
+            continue;
+        }
+        const spotRaw = state.latest_price?.spot ?? 0;
+        let quotes: StrikeQuote[] = [];
+        if (senderAddr && spotRaw > 0) {
+            try {
+                quotes = await quoteLadder(senderAddr, oracle, spotRaw);
+            } catch {
+                /* devInspect hiccup — treat as no quotes for this candidate */
+            }
+        }
+        const minImplied =
+            quotes.length > 0
+                ? Math.min(...quotes.map((q) => q.impliedProb))
+                : Infinity;
+        const achievable = minImplied <= 1 - EDGE_THRESHOLD;
+        if (achievable) {
+            console.log(
+                `[strategy] picked tradeable oracle ${oracle.oracle_id.slice(0, 10)} ` +
+                    `(min implied ${(minImplied * 100).toFixed(0)}% ≤ ${((1 - EDGE_THRESHOLD) * 100).toFixed(0)}%)`
+            );
+            return { oracle, state, quotes, achievable: true };
+        }
+        if (!fallback) fallback = { oracle, state, quotes, achievable: false };
+    }
+    // Nothing tradeable in the scan window — return the soonest for heartbeating.
+    return fallback;
 }
 
 /** Record a one-line heartbeat so the Bot trader menu can show that the
@@ -672,66 +729,41 @@ export function startStrategyLoop(bot: Telegraf): () => void {
             await redeemSettledForUser(bot, sub.chatId, sub.botManagerId);
         }
 
-        // 2) Then try to mint a fresh position on the next active oracle.
-        const oracle = await pickOracle();
-        if (!oracle) {
+        // 2) Then try to mint. Scan up to MAX_ORACLE_SCAN eligible oracles for
+        // one with an achievable-edge table (devInspect needs any valid sender
+        // — reuse a subscriber's bot wallet; reads touch no sender objects).
+        // The chosen oracle's ladder is quoted once and shared across users.
+        const senderAddr = subs.find((s) => s.botWalletAddr)?.botWalletAddr;
+        const picked = await pickTradeableOracle(senderAddr);
+        if (!picked) {
             console.log('[strategy] no eligible oracle right now');
             return;
         }
-
-        let state: OracleState;
-        try {
-            state = await getOracleState(oracle.oracle_id);
-        } catch (e) {
-            console.warn('[strategy] getOracleState failed:', e);
-            return;
-        }
-
-        // Quote the strike ladder ONCE per oracle per tick (oracle-level,
-        // not user-level) via devInspect, then share it across all users.
-        // This is what makes the agent price-aware and kills out-of-band
-        // aborts. devInspect needs any valid sender — reuse a subscriber's
-        // bot wallet (read-only, touches no sender objects).
-        const senderAddr = subs.find((s) => s.botWalletAddr)?.botWalletAddr;
-        const spotRaw = state.latest_price?.spot ?? 0;
-        let quotes: StrikeQuote[] = [];
-        if (senderAddr && spotRaw > 0) {
-            try {
-                quotes = await quoteLadder(senderAddr, oracle, spotRaw);
-            } catch (e) {
-                console.warn('[strategy] quoteLadder failed:', e);
-            }
-        }
+        const { oracle, state, quotes, achievable } = picked;
         console.log(
-            `[strategy] oracle ${oracle.oracle_id.slice(0, 10)} — ${quotes.length} quotable strikes`
+            `[strategy] oracle ${oracle.oracle_id.slice(0, 10)} — ${quotes.length} quotable strikes` +
+                (achievable ? '' : ' (no achievable edge in scan window)')
         );
 
-        // Pre-LLM edge gate (oracle-level). A mint needs p − implied ≥
-        // EDGE_THRESHOLD and p ≤ 1, so the CHEAPEST implied across the whole
-        // table must be ≤ 1 − EDGE_THRESHOLD for any edge to be possible. When
-        // the table is priced at cost/payout ≈ 1 (implied ~100% both sides),
-        // no leg can EVER clear the bar — so skip the agent entirely instead of
-        // burning one Claude call per user every tick on a guaranteed pass.
+        // No oracle in the scan window has an achievable edge — a mint needs
+        // p − implied ≥ EDGE_THRESHOLD with p ≤ 1, impossible when every table
+        // is priced at cost/payout ≈ 1. Heartbeat + skip the LLM entirely
+        // instead of burning a Claude call per user on a guaranteed pass.
         // (Settled-position redemptions above already ran, so funds still free up.)
-        if (quotes.length > 0) {
-            const minImplied = Math.min(...quotes.map((q) => q.impliedProb));
-            if (minImplied > 1 - EDGE_THRESHOLD) {
-                console.log(
-                    `[strategy] oracle ${oracle.oracle_id.slice(0, 10)} has no achievable edge ` +
-                        `(min implied ${(minImplied * 100).toFixed(0)}% > ${((1 - EDGE_THRESHOLD) * 100).toFixed(0)}%) — ` +
-                        `skipping LLM for all users this tick`
-                );
-                const lbl = `${oracle.underlying_asset}-${approxBucket(oracle.expiry - Date.now())}`;
-                await Promise.all(
-                    subs.map((s) =>
-                        recordHeartbeat(
-                            s.chatId,
-                            `passed · no edge on ${lbl} (table ~100% implied)`
-                        )
+        if (!achievable) {
+            const lbl = `${oracle.underlying_asset}-${approxBucket(oracle.expiry - Date.now())}`;
+            await Promise.all(
+                subs.map((s) =>
+                    recordHeartbeat(
+                        s.chatId,
+                        `passed · no edge on any of ${MAX_ORACLE_SCAN} oracles (tables ~100% implied)`
                     )
-                );
-                return;
-            }
+                )
+            );
+            console.log(
+                `[strategy] no achievable edge across ${MAX_ORACLE_SCAN}-oracle scan (closest ${lbl}) — skipping LLM`
+            );
+            return;
         }
 
         for (const sub of subs) {
