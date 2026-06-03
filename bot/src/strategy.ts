@@ -616,7 +616,7 @@ async function tryMintForUser(
         const sk = strikeToUsd(Number(s.attempt.strike));
         lines.push(
             `${arr} ${s.attempt.direction} @ $${sk.toFixed(0)}  ` +
-                `cover $${s.attempt.coverUsd.toFixed(2)}  ·  _${s.attempt.rationale}_`
+                `cover $${s.attempt.coverUsd.toFixed(2)}  ·  _${mdSafe(s.attempt.rationale)}_`
         );
     }
     if (failed.length > 0) {
@@ -625,7 +625,7 @@ async function tryMintForUser(
             const arr = f.attempt.direction === 'UP' ? '↑' : '↓';
             const sk = strikeToUsd(Number(f.attempt.strike));
             lines.push(
-                `⚠️ skipped ${arr} ${f.attempt.direction} @ $${sk.toFixed(0)} — ${f.reason}`
+                `⚠️ skipped ${arr} ${f.attempt.direction} @ $${sk.toFixed(0)} — ${mdSafe(f.reason)}`
             );
         }
     }
@@ -633,16 +633,30 @@ async function tryMintForUser(
     lines.push(
         `Spot: $${spotUsd.toFixed(2)}  ·  Expires ${new Date(oracle.expiry).toLocaleTimeString()}`
     );
-    lines.push(`_${plan.summaryRationale}_`);
+    lines.push(`_${mdSafe(plan.summaryRationale)}_`);
     if (settled[0]) {
         lines.push(`\`${settled[0].digest.slice(0, 14)}…\``);
     }
 
-    await bot.telegram
-        .sendMessage(chatId, lines.join('\n'), { parse_mode: 'Markdown' })
-        .catch(() => {
-            /* user blocked the bot — ignore */
-        });
+    const body = lines.join('\n');
+    try {
+        await bot.telegram.sendMessage(chatId, body, { parse_mode: 'Markdown' });
+    } catch (e) {
+        // Markdown parse error (stray entity) or transient — retry as plain
+        // text so a mint notification ALWAYS lands. Better unstyled than silent.
+        console.warn('[strategy] mint DM Markdown failed, retrying plain:', e);
+        await bot.telegram
+            .sendMessage(chatId, body.replace(/[*_`]/g, ''))
+            .catch(() => {
+                /* user blocked the bot — ignore */
+            });
+    }
+}
+
+/** Neutralize legacy-Markdown control chars in free text (agent rationales)
+ *  so one stray _ or * can't make Telegram reject the whole message. */
+function mdSafe(s: string): string {
+    return s.replace(/[_*`[\]]/g, ' ').trim();
 }
 
 /** Rough bucket label for an oracle's remaining lifetime. */
