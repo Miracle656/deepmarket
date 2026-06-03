@@ -11,6 +11,7 @@ import {
     getUnsettledExposedOracles,
     type VaultStats,
 } from '../lib/predict';
+import WithdrawalLimiterViz from './WithdrawalLimiterViz';
 
 const usd = (n: number) =>
     `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -59,11 +60,6 @@ export default function VaultRiskPanel() {
     const utilOfCap =
         stats.maxExposurePct > 0 ? exposureUtilization / stats.maxExposurePct : 0;
 
-    const wl = stats.withdrawalLimiter;
-    const wlPctFull = wl.enabled && wl.capacityUsd > 0 ? wl.availableUsd / wl.capacityUsd : 0;
-    // refill rate in dUSDC per minute (raw is base units per ms, dUSDC = 6 dp)
-    const refillPerMin = wl.refillRatePerMs > 0 ? (wl.refillRatePerMs * 60_000) / 1e6 : 0;
-
     return (
         <div className="vault-panel">
             <div className="vault-head" style={{ alignItems: 'center', justifyContent: 'space-between' }}>
@@ -105,33 +101,8 @@ export default function VaultRiskPanel() {
                 </div>
             </div>
 
-            {/* Withdrawal limiter */}
-            <div className="risk-block">
-                <div className="risk-block-h">Withdrawal limiter</div>
-                {wl.enabled ? (
-                    <>
-                        <div className="risk-row">
-                            <span className="vault-muted">Available now</span>
-                            <span>{usd(wl.availableUsd)} <span className="vault-muted">/ {usd(wl.capacityUsd)}</span></span>
-                        </div>
-                        <div className="risk-row">
-                            <span className="vault-muted">Refill</span>
-                            <span>{usd(refillPerMin)} / min</span>
-                        </div>
-                        <div className="risk-bar" style={{ marginTop: 8 }}>
-                            <div
-                                className="risk-bar-fill"
-                                style={{ width: `${(wlPctFull * 100).toFixed(2)}%` }}
-                            />
-                        </div>
-                    </>
-                ) : (
-                    <div className="risk-row">
-                        <span className="vault-muted">Status</span>
-                        <span>Disabled — unlimited withdrawals subject to available headroom.</span>
-                    </div>
-                )}
-            </div>
+            {/* Withdrawal limiter — live token-bucket refill */}
+            <WithdrawalLimiterViz wl={stats.withdrawalLimiter} />
 
             {/* Exposed oracles + accepted quotes */}
             <div className="risk-block">

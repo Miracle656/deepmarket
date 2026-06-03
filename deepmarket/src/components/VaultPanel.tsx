@@ -168,6 +168,40 @@ export default function VaultPanel() {
                 </button>
             </div>
 
+            {/* Net asset value — the live mark-to-market headline.
+                NAV = vault assets (balance) − holders' open MTM liability. */}
+            <div className="vault-nav">
+                <div className="vault-nav-label">Net asset value · live</div>
+                <div className="vault-nav-value">
+                    {stats ? usd(stats.vaultValue) : '—'}
+                </div>
+                {stats && (
+                    <div className="vault-nav-breakdown">
+                        <span>TVL {usd(stats.tvl)}</span>
+                        <span className="vault-muted">−</span>
+                        <span>MTM liability {usd(stats.totalMtm)}</span>
+                    </div>
+                )}
+                {stats && stats.totalShares > 0 && (
+                    <div className="vault-nav-share">
+                        <span className="vault-muted">PLP share price</span>
+                        <span className="vault-nav-share-val">
+                            ${stats.sharePrice.toFixed(4)}
+                        </span>
+                        <span
+                            className={
+                                stats.sharePrice >= 1
+                                    ? 'vault-nav-up'
+                                    : 'vault-nav-down'
+                            }
+                        >
+                            {stats.sharePrice >= 1 ? '+' : ''}
+                            {((stats.sharePrice - 1) * 100).toFixed(2)}% vs par
+                        </span>
+                    </div>
+                )}
+            </div>
+
             {/* Vault stats */}
             <div className="vault-stats">
                 <Stat label="Vault TVL" value={stats ? usd(stats.tvl) : '—'} />
