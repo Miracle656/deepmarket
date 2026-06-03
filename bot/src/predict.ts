@@ -46,6 +46,7 @@ export interface ManagerSummary {
 }
 
 export type PositionStatus =
+    | 'active'
     | 'open'
     | 'won'
     | 'lost'

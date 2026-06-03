@@ -31,7 +31,12 @@ export function isChatAvailable(): boolean {
 
 const usd = (n: number) => `$${n.toFixed(2)}`;
 const dusdc = (raw: number) => raw / 10 ** CONFIG.DUSDC_DECIMALS;
-const OPEN_STATUSES = new Set(['open', 'awaiting_settlement']);
+// The server marks live positions 'active' (also 'open'/'awaiting_settlement');
+// settled ones are won/lost/redeemable/redeemed. Classify by the SETTLED set so
+// any non-settled status with open quantity counts as open.
+const SETTLED_STATUSES = new Set(['won', 'lost', 'redeemable', 'redeemed', 'settled']);
+const isOpen = (p: Position) =>
+    p.open_quantity > 0 && !SETTLED_STATUSES.has(p.status);
 
 function fmtExpiry(ms: number): string {
     const d = ms - Date.now();
@@ -78,8 +83,8 @@ async function runTool(chatId: number, name: string): Promise<string> {
     if (name === 'get_positions') {
         if (!managerId) return 'No PredictManager yet. Set one up via 🤖 Bot trader.';
         const positions = await getManagerPositions(managerId).catch(() => [] as Position[]);
-        const open = positions.filter((p) => OPEN_STATUSES.has(p.status) && p.open_quantity > 0);
-        const closed = positions.filter((p) => !OPEN_STATUSES.has(p.status) || p.open_quantity === 0);
+        const open = positions.filter(isOpen);
+        const closed = positions.filter((p) => !isOpen(p));
         return JSON.stringify({
             open_count: open.length,
             open: open.map(posLine),
