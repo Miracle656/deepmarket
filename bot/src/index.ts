@@ -36,7 +36,7 @@ import {
     upsertSubscription,
 } from './store.js';
 import { startWatchers } from './watchers.js';
-import { startStrategyLoop } from './strategy.js';
+import { startStrategyLoop, runStrategyTick } from './strategy.js';
 import { isAgentAvailable } from './agent.js';
 import { getMemory } from './memory.js';
 import { isMemWalAvailable, pingMemWal } from './memwal.js';
@@ -143,7 +143,20 @@ async function editOrReply(
             link_preview_options: { is_disabled: true },
             parse_mode: 'Markdown',
         });
-    } catch {
+    } catch (e) {
+        const emsg = e instanceof Error ? e.message : String(e);
+        // Identical content → Telegram rejects the edit ("message is not
+        // modified"). The message already shows what we want, so swallow it
+        // instead of spamming a fresh copy. Only fall back to a new message
+        // when there's genuinely no message to edit (e.g. a /command).
+        if (emsg.includes('message is not modified')) {
+            try {
+                await ctx.answerCbQuery('Up to date');
+            } catch {
+                /* not a callback context — nothing to ack */
+            }
+            return;
+        }
         await ctx.reply(text, {
             ...extra,
             link_preview_options: { is_disabled: true },
@@ -568,6 +581,7 @@ async function main() {
             ...(lastNote ? { lastAgentNote: lastNote } : {}),
             ...(sub.lastCheckAt ? { lastCheckAt: sub.lastCheckAt } : {}),
             ...(sub.lastOutcome ? { lastOutcome: sub.lastOutcome } : {}),
+            demoMode: CONFIG.DEMO_MODE,
         });
         await editOrReply(ctx, view.text, { reply_markup: view.reply_markup });
     }
@@ -798,6 +812,25 @@ async function main() {
                     ? `${webhookDomain}/telegram-webhook`
                     : null,
             });
+        });
+
+        // Drive ONE strategy tick on demand. Point a cron (cron-job.org /
+        // UptimeRobot) at /tick?key=<TICK_SECRET> every 1-5 min so the loop
+        // runs reliably even when Render free sleeps the instance — the
+        // request both wakes the dyno AND runs the tick (awaited, so the
+        // instance stays up until it finishes). Doubles as keep-alive.
+        app.get('/tick', async (req, res) => {
+            if (!CONFIG.TICK_SECRET || req.query.key !== CONFIG.TICK_SECRET) {
+                res.status(403).json({ error: 'forbidden' });
+                return;
+            }
+            try {
+                await runStrategyTick(bot);
+                res.json({ ok: true, ranAt: new Date().toISOString() });
+            } catch (e) {
+                console.error('[tick] error:', e);
+                res.status(500).json({ error: e instanceof Error ? e.message : String(e) });
+            }
         });
 
         if (webhookDomain) {

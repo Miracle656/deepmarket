@@ -44,6 +44,20 @@ export const CONFIG = {
     STRATEGY_BUFFER_TICKS: Number(process.env.STRATEGY_BUFFER_TICKS ?? 3),
     STRATEGY_QTY_USD: Number(process.env.STRATEGY_QTY_USD ?? 0.5),
     STRATEGY_TICK_MS: Number(process.env.STRATEGY_TICK_MS ?? 60000),
+    /**
+     * DEMO ONLY — bypass the edge bar and force a small deterministic mint
+     * so the end-to-end flow is visible on demand even when the vault is
+     * pricing every table at ~100% implied (no real edge). NEVER leave on for
+     * real trading: the forced mints are -EV. Off unless DEMO_MODE=true.
+     */
+    DEMO_MODE: (process.env.DEMO_MODE ?? '').toLowerCase() === 'true',
+    /**
+     * Shared secret to drive a strategy tick over HTTP: GET /tick?key=<secret>.
+     * Lets an external scheduler (cron-job.org / UptimeRobot) run the loop on
+     * hosts that sleep idle instances (Render free), where setInterval can't be
+     * trusted. Empty → the /tick endpoint is disabled (403).
+     */
+    TICK_SECRET: process.env.TICK_SECRET ?? '',
 
     // Service fee — bot charges a small dUSDC fee per mint, paid to a
     // treasury address. Covers API + RPC + Walrus costs. Leave

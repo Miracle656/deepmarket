@@ -184,6 +184,8 @@ export interface BotTraderState {
     lastCheckAt?: number;
     /** Heartbeat: short outcome of that last tick. */
     lastOutcome?: string;
+    /** DEMO mode is on — the agent force-mints -EV to show the flow. */
+    demoMode?: boolean;
 }
 
 export function botTraderMenu(state: BotTraderState): {
@@ -244,7 +246,8 @@ export function botTraderMenu(state: BotTraderState): {
             (state.agentMode
                 ? `  ·  ${state.agentMode === 'llm' ? '🧠 Claude' : '📐 rule'}`
                 : '') +
-            (state.memwalOn ? `  ·  🐋 MemWal` : ''),
+            (state.memwalOn ? `  ·  🐋 MemWal` : '') +
+            (state.demoMode ? `  ·  ⚠️ DEMO` : ''),
     ];
     if (state.strategyOn && state.lastCheckAt) {
         const t = new Date(state.lastCheckAt).toLocaleTimeString([], {

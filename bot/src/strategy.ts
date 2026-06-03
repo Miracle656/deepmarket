@@ -127,7 +127,10 @@ async function pickTradeableOracle(
             quotes.length > 0
                 ? Math.min(...quotes.map((q) => q.impliedProb))
                 : Infinity;
-        const achievable = minImplied <= 1 - EDGE_THRESHOLD;
+        // DEMO mode trades any oracle that has quotable strikes at all.
+        const achievable = CONFIG.DEMO_MODE
+            ? quotes.length > 0
+            : minImplied <= 1 - EDGE_THRESHOLD;
         if (achievable) {
             console.log(
                 `[strategy] picked tradeable oracle ${oracle.oracle_id.slice(0, 10)} ` +
@@ -183,6 +186,31 @@ async function chooseMintBatch(
             `[strategy] no quotable strikes for oracle ${oracle.oracle_id.slice(0, 10)} — skipping chat ${chatId}`
         );
         return null;
+    }
+
+    // DEMO ONLY — bypass the agent + edge bar to force one small visible mint.
+    // Picks the most balanced quotable strike (implied closest to 50%) so it
+    // looks like a real coin-flip bet, and labels it clearly as -EV demo.
+    if (CONFIG.DEMO_MODE) {
+        const pick = [...quotes].sort(
+            (a, b) => Math.abs(a.impliedProb - 0.5) - Math.abs(b.impliedProb - 0.5)
+        )[0]!;
+        const cover = Math.max(COVER_USD_MIN, Math.min(CONFIG.STRATEGY_QTY_USD, 0.5));
+        console.log(
+            `[strategy] DEMO_MODE — forcing ${pick.direction} @ $${pick.strikeUsd.toFixed(0)} (implied ${(pick.impliedProb * 100).toFixed(0)}%) for chat ${chatId}`
+        );
+        return {
+            mints: [
+                {
+                    direction: pick.direction,
+                    strike: pick.strikeRaw,
+                    coverUsd: cover,
+                    rationale: `⚠️ DEMO MODE — forced mint to show the flow (NOT +EV)`,
+                },
+            ],
+            summaryRationale:
+                '⚠️ DEMO MODE: edge bar bypassed to demonstrate live execution. Set DEMO_MODE=false for real trading.',
+        };
     }
     // Quotable-strike index — the deterministic backstop. Even if the model
     // hallucinates a strike, anything not in here is dropped BEFORE it hits
@@ -716,12 +744,18 @@ async function redeemSettledForUser(
     }
 }
 
-export function startStrategyLoop(bot: Telegraf): () => void {
-    const tick = async () => {
-        const subs = listAll().filter(
-            (s) => s.strategyEnabled && !!s.botManagerId && !!s.botWalletKey
-        );
-        if (subs.length === 0) return;
+/**
+ * Run ONE strategy tick: redeem settled positions, then evaluate + maybe mint
+ * for every strategy-enabled user. Safe to call from both the in-process
+ * setInterval AND an external scheduler (e.g. a cron ping hitting /tick) — the
+ * latter is how the loop stays alive on hosts that sleep idle instances
+ * (Render free tier), where setInterval can't be relied on.
+ */
+export async function runStrategyTick(bot: Telegraf): Promise<void> {
+    const subs = listAll().filter(
+        (s) => s.strategyEnabled && !!s.botManagerId && !!s.botWalletKey
+    );
+    if (subs.length === 0) return;
 
         // 1) Redeem settled positions first — frees up dUSDC for the next mint.
         for (const sub of subs) {
@@ -770,10 +804,16 @@ export function startStrategyLoop(bot: Telegraf): () => void {
             if (!sub.botManagerId) continue;
             await tryMintForUser(bot, sub, oracle, state, quotes);
         }
-    };
+}
 
-    void tick();
-    const id = setInterval(() => void tick(), CONFIG.STRATEGY_TICK_MS);
+/**
+ * In-process strategy loop. Works on always-on hosts. On hosts that sleep idle
+ * instances (Render free), pair an external cron hitting /tick with this — the
+ * cron is the reliable clock; this setInterval is the best-effort backup.
+ */
+export function startStrategyLoop(bot: Telegraf): () => void {
+    void runStrategyTick(bot);
+    const id = setInterval(() => void runStrategyTick(bot), CONFIG.STRATEGY_TICK_MS);
     const mode = isAgentAvailable() ? 'LLM agent' : 'rule fallback';
     console.log(
         `[strategy] loop running every ${CONFIG.STRATEGY_TICK_MS}ms · ${mode}`
