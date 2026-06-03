@@ -522,6 +522,9 @@ async function tryMintForUser(
     }
     const settled: SettledMint[] = [];
     const failed: FailedMint[] = [];
+    // Track on-chain decision-log outcome so the DM can report it.
+    let decisionsLogged = 0;
+    let decisionLogFailed = false;
 
     // Walk the planned mints sequentially — each mint debits the wallet
     // dUSDC, so we deduct as we go to stop minting when the wallet runs dry.
@@ -570,7 +573,7 @@ async function tryMintForUser(
             // mint that already happened. The Move side aborts if the cap was
             // revoked mid-tick, so the log stays binding.
             if (cap) {
-                void recordDecision(chatId, {
+                const rec = await recordDecision(chatId, {
                     capId: cap.capId,
                     oracleId: oracle.oracle_id,
                     isMint: true,
@@ -579,6 +582,8 @@ async function tryMintForUser(
                     coverUsd: Math.floor(attempt.coverUsd * DUSDC_SCALE),
                     rationale: attempt.rationale,
                 });
+                if (rec) decisionsLogged++;
+                else decisionLogFailed = true;
             }
         } catch (e) {
             const msg = e instanceof Error ? e.message : String(e);
@@ -643,6 +648,15 @@ async function tryMintForUser(
         `Spot: $${spotUsd.toFixed(2)}  ·  Expires ${formatExpiry(oracle.expiry)}`
     );
     lines.push(`_${mdSafe(plan.summaryRationale)}_`);
+    // On-chain decision-log status — so it's obvious whether the AgentCap audit
+    // recorded this mint (the /agents feed), instead of having to check chain.
+    if (!cap) {
+        lines.push('⚠️ No AgentCap — decision NOT logged on-chain. Authorize at /agent.');
+    } else if (decisionsLogged > 0) {
+        lines.push(`✓ ${decisionsLogged} decision(s) logged on-chain (AgentCap)`);
+    } else if (decisionLogFailed) {
+        lines.push('⚠️ On-chain log failed — cap mismatch/revoked or gas. See logs.');
+    }
     if (settled[0]) {
         lines.push(`\`${settled[0].digest.slice(0, 14)}…\``);
     }

@@ -871,7 +871,7 @@ async function main() {
                 mode: webhookDomain ? 'webhook' : 'long-poll',
                 // Bump on each deploy you want to verify is live. If GET /health
                 // doesn't show this build, your host deployed an older commit.
-                build: 'nl-chat+capfix+relative-time',
+                build: 'capfix+relative-time+decision-log-status',
                 features: ['trade-panel', 'demo-toggle', 'tick-endpoint', 'markdown-safe-dm', 'oracle-callback', 'nl-chat'],
             });
         });
