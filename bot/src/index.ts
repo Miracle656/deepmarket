@@ -36,7 +36,12 @@ import {
     upsertSubscription,
 } from './store.js';
 import { startWatchers } from './watchers.js';
-import { startStrategyLoop, runStrategyTick } from './strategy.js';
+import {
+    startStrategyLoop,
+    runStrategyTick,
+    isDemoMode,
+    setDemoMode,
+} from './strategy.js';
 import { openTradePanel, registerTradePanel } from './trade-panel.js';
 import { isAgentAvailable } from './agent.js';
 import { getMemory } from './memory.js';
@@ -582,13 +587,26 @@ async function main() {
             ...(lastNote ? { lastAgentNote: lastNote } : {}),
             ...(sub.lastCheckAt ? { lastCheckAt: sub.lastCheckAt } : {}),
             ...(sub.lastOutcome ? { lastOutcome: sub.lastOutcome } : {}),
-            demoMode: CONFIG.DEMO_MODE,
+            demoMode: isDemoMode(),
         });
         await editOrReply(ctx, view.text, { reply_markup: view.reply_markup });
     }
 
     bot.action('menu:bot', async (ctx) => {
         await ctx.answerCbQuery();
+        await renderBotMenu(ctx);
+    });
+
+    // Toggle DEMO mode at runtime (force -EV mints to demo the flow). Global to
+    // this bot instance; resets to the DEMO_MODE env default on redeploy.
+    bot.action('bot:demo', async (ctx) => {
+        const next = !isDemoMode();
+        setDemoMode(next);
+        await ctx.answerCbQuery(
+            next
+                ? '⚠️ Demo ON — the agent will force small -EV mints'
+                : 'Demo off — back to edge-only trading'
+        );
         await renderBotMenu(ctx);
     });
 

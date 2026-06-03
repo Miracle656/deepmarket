@@ -287,11 +287,24 @@ export function botTraderMenu(state: BotTraderState): {
                   'bot:initmanager'
               ),
           ];
+    const demoRow: InlineKeyboardButton[][] = state.managerId
+        ? [
+              [
+                  Markup.button.callback(
+                      state.demoMode
+                          ? '⚠️ Demo mode: ON — tap to disable'
+                          : '🧪 Enable demo mode (force -EV mints)',
+                      'bot:demo'
+                  ),
+              ],
+          ]
+        : [];
     return {
         text: lines.join('\n'),
         reply_markup: {
             inline_keyboard: [
                 actionRow,
+                ...demoRow,
                 [
                     Markup.button.callback('📋 Show key', 'bot:export'),
                     Markup.button.callback('🔁 Rotate wallet', 'bot:rotate'),

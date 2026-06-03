@@ -69,6 +69,18 @@ function maxCoverUsd(): number {
     return Math.max(CONFIG.STRATEGY_QTY_USD * 3, 1.5);
 }
 
+// DEMO mode — runtime-toggleable from the Bot trader menu. Defaults to the
+// DEMO_MODE env flag. When on, the agent bypasses the edge bar and force-mints
+// a small -EV position so the flow is demoable while the vault prices ~100%.
+let demoMode = CONFIG.DEMO_MODE;
+export function isDemoMode(): boolean {
+    return demoMode;
+}
+export function setDemoMode(on: boolean): void {
+    demoMode = on;
+    console.log(`[strategy] DEMO_MODE ${on ? 'ON' : 'off'} (runtime)`);
+}
+
 /** How many eligible oracles to probe per tick looking for an edgy table. */
 const MAX_ORACLE_SCAN = 5;
 
@@ -128,7 +140,7 @@ async function pickTradeableOracle(
                 ? Math.min(...quotes.map((q) => q.impliedProb))
                 : Infinity;
         // DEMO mode trades any oracle that has quotable strikes at all.
-        const achievable = CONFIG.DEMO_MODE
+        const achievable = demoMode
             ? quotes.length > 0
             : minImplied <= 1 - EDGE_THRESHOLD;
         if (achievable) {
@@ -191,7 +203,7 @@ async function chooseMintBatch(
     // DEMO ONLY — bypass the agent + edge bar to force one small visible mint.
     // Picks the most balanced quotable strike (implied closest to 50%) so it
     // looks like a real coin-flip bet, and labels it clearly as -EV demo.
-    if (CONFIG.DEMO_MODE) {
+    if (demoMode) {
         const pick = [...quotes].sort(
             (a, b) => Math.abs(a.impliedProb - 0.5) - Math.abs(b.impliedProb - 0.5)
         )[0]!;
