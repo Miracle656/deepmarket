@@ -7,7 +7,10 @@ import { ConnectButton } from '@mysten/dapp-kit';
 import { CONFIG } from '../lib/config';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
-import { ArrowRight, ExternalLink, Menu, X /* Sun, Moon — theme toggle commented out (dark-locked) */ } from 'lucide-react';
+import { ArrowRight, ExternalLink, Menu, X, Send /* Sun, Moon — theme toggle commented out (dark-locked) */ } from 'lucide-react';
+
+/** Official DeepMarket Telegram trading bot. */
+const TG_BOT_URL = 'https://t.me/sui_deepMarket_bot';
 import { useMarkets } from '../lib/useMarkets';
 import { formatVol } from '../App';
 // import { rippleThemeToggle } from '../lib/themeToggle'; // theme toggle commented out (dark-locked)
@@ -226,6 +229,14 @@ export default function LandingPage() {
                     >
                         Docs ↗
                     </a>
+                    <a
+                        href={TG_BOT_URL}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{ color: '#229ED9', fontSize: '0.82rem', textDecoration: 'none', padding: '6px 8px', display: 'inline-flex', alignItems: 'center', gap: 5, fontWeight: 600 }}
+                    >
+                        <Send size={13} /> Telegram Bot
+                    </a>
                 </div>
 
                 {/* Theme toggle — commented out (site is dark-locked).
@@ -297,6 +308,16 @@ export default function LandingPage() {
                                 onClick={() => setMenuOpen(false)}
                             >
                                 Docs ↗
+                            </a>
+                            <a
+                                className="mobile-drawer-link"
+                                href={TG_BOT_URL}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                onClick={() => setMenuOpen(false)}
+                                style={{ color: '#229ED9' }}
+                            >
+                                Trade on Telegram ↗
                             </a>
                             <button
                                 className="mobile-drawer-link"
@@ -414,6 +435,28 @@ export default function LandingPage() {
                         >
                             View Contract
                             <ExternalLink size={13} />
+                        </motion.a>
+                        <motion.a
+                            href={TG_BOT_URL}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="btn"
+                            style={{
+                                fontSize: '0.95rem',
+                                padding: '11px 24px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 8,
+                                textDecoration: 'none',
+                                background: '#229ED9', // Telegram blue
+                                color: '#fff',
+                                border: 'none',
+                            }}
+                            whileHover={{ scale: 1.04, boxShadow: '0 0 28px rgba(34,158,217,0.45)' }}
+                            whileTap={{ scale: 0.97 }}
+                        >
+                            <Send size={15} />
+                            Trade on Telegram
                         </motion.a>
                     </div>
                 </div>
