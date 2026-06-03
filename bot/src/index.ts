@@ -288,12 +288,14 @@ async function buildPredictListView(): Promise<{
         lines.push(
             `· *${o.underlying_asset}*${spotLabel} — expires ${formatExpiry(o.expiry)}`
         );
+        // Callback (NOT url) so tapping opens the in-Telegram trade panel.
+        // A small ↗ web link sits beside it for the full web UI.
         buttons.push([
-            urlOrCallback(
-                `→ ${o.underlying_asset} ${formatExpiry(o.expiry)}`,
-                `${CONFIG.WEB_URL}/predict/${o.oracle_id}`,
+            Markup.button.callback(
+                `→ Trade ${o.underlying_asset} ${formatExpiry(o.expiry)}`,
                 `predict:open:${o.oracle_id}`
             ),
+            Markup.button.url('↗', `${CONFIG.WEB_URL}/predict/${o.oracle_id}`),
         ]);
     }
     buttons.push(backButton('menu:predict'));
