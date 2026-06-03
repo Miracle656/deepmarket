@@ -260,6 +260,28 @@ async function buildPositionsView(chatId: number): Promise<{
     };
 }
 
+// Telegram callback_data is capped at 64 bytes; a full oracle id
+// (`predict:open:0x<64hex>` = 79 bytes) overflows it and the tap silently does
+// nothing. Key buttons by the id's last 16 hex chars and resolve back here.
+const oracleIdBySuffix = new Map<string, string>();
+
+async function resolveOracleId(suffix: string): Promise<string | null> {
+    const hit = oracleIdBySuffix.get(suffix);
+    if (hit) return hit;
+    // Cache miss (bot restarted) — re-fetch and match by suffix.
+    try {
+        const all = await listActiveOracles();
+        const found = all.find((o) => o.oracle_id.endsWith(suffix));
+        if (found) {
+            oracleIdBySuffix.set(suffix, found.oracle_id);
+            return found.oracle_id;
+        }
+    } catch {
+        /* ignore */
+    }
+    return null;
+}
+
 async function buildPredictListView(): Promise<{
     text: string;
     extra: { reply_markup: InlineKeyboardMarkup };
@@ -289,11 +311,13 @@ async function buildPredictListView(): Promise<{
             `· *${o.underlying_asset}*${spotLabel} — expires ${formatExpiry(o.expiry)}`
         );
         // Callback (NOT url) so tapping opens the in-Telegram trade panel.
-        // A small ↗ web link sits beside it for the full web UI.
+        // Key by a 16-char suffix to stay under the 64-byte callback_data cap.
+        const sfx = o.oracle_id.slice(-16);
+        oracleIdBySuffix.set(sfx, o.oracle_id);
         buttons.push([
             Markup.button.callback(
                 `→ Trade ${o.underlying_asset} ${formatExpiry(o.expiry)}`,
-                `predict:open:${o.oracle_id}`
+                `predict:open:${sfx}`
             ),
             Markup.button.url('↗', `${CONFIG.WEB_URL}/predict/${o.oracle_id}`),
         ]);
@@ -779,9 +803,15 @@ async function main() {
     // open-by-id callbacks: when WEB_URL is non-HTTPS the URL buttons become
     // callback buttons; we acknowledge with a hint to open the browser.
     // Tapping an oracle opens the in-Telegram trade panel (binary/range mint).
-    bot.action(/^predict:open:(0x[a-f0-9]+)$/, async (ctx) => {
-        const oracleId = ctx.match[1];
-        if (oracleId) await openTradePanel(ctx, oracleId);
+    bot.action(/^predict:open:([a-f0-9]{12,20})$/, async (ctx) => {
+        const suffix = ctx.match[1];
+        if (!suffix) return;
+        const oracleId = await resolveOracleId(suffix);
+        if (!oracleId) {
+            await ctx.answerCbQuery('Oracle no longer active — refresh the list');
+            return;
+        }
+        await openTradePanel(ctx, oracleId);
     });
     registerTradePanel(bot);
 
@@ -826,8 +856,8 @@ async function main() {
                 mode: webhookDomain ? 'webhook' : 'long-poll',
                 // Bump on each deploy you want to verify is live. If GET /health
                 // doesn't show this build, your host deployed an older commit.
-                build: 'trade-panel+demo-toggle+tick+dm-fix',
-                features: ['trade-panel', 'demo-toggle', 'tick-endpoint', 'markdown-safe-dm'],
+                build: 'trade-panel+demo-toggle+tick+dm-fix+oracle-callback',
+                features: ['trade-panel', 'demo-toggle', 'tick-endpoint', 'markdown-safe-dm', 'oracle-callback'],
             });
         });
         app.get('/', (_req, res) => {
