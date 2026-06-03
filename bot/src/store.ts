@@ -53,6 +53,10 @@ export interface Subscription {
     botManagerId?: string | null;
     /** When true, the strategy engine trades on this user's wallet. */
     strategyEnabled?: boolean;
+    /** Heartbeat: epoch ms of the last strategy tick that evaluated this user. */
+    lastCheckAt?: number;
+    /** Heartbeat: short outcome of that last tick (e.g. "passed · no edge"). */
+    lastOutcome?: string;
     /** Recent trade activity for the /strategy menu. */
     botTrades?: BotTrade[];
     /** Lifetime dUSDC fees paid to the bot treasury, in base units. */

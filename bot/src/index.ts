@@ -566,6 +566,8 @@ async function main() {
             agentMode,
             memwalOn: isMemWalAvailable(),
             ...(lastNote ? { lastAgentNote: lastNote } : {}),
+            ...(sub.lastCheckAt ? { lastCheckAt: sub.lastCheckAt } : {}),
+            ...(sub.lastOutcome ? { lastOutcome: sub.lastOutcome } : {}),
         });
         await editOrReply(ctx, view.text, { reply_markup: view.reply_markup });
     }

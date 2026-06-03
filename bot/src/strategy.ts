@@ -84,6 +84,15 @@ async function pickOracle(): Promise<OracleSummary | null> {
     return eligible[0] ?? null;
 }
 
+/** Record a one-line heartbeat so the Bot trader menu can show that the
+ *  strategy is alive and what it last decided — even when it passes silently. */
+async function recordHeartbeat(chatId: number, outcome: string): Promise<void> {
+    await patchSubscription(chatId, {
+        lastCheckAt: Date.now(),
+        lastOutcome: outcome,
+    }).catch(() => {});
+}
+
 interface MintAttempt {
     direction: 'UP' | 'DOWN';
     strike: bigint;
@@ -349,11 +358,15 @@ async function tryMintForUser(
                 )
                 .catch(() => {});
         }
+        await recordHeartbeat(chatId, 'paused · AgentCap revoked/expired');
         return;
     }
 
     const plan = await chooseMintBatch(chatId, managerId, oracle, state, quotes);
-    if (!plan) return;
+    if (!plan) {
+        await recordHeartbeat(chatId, 'passed · no +EV trade this tick');
+        return;
+    }
 
     // ── HARD daily spend cap ───────────────────────────────────────────
     // Enforced on EVERY mint path here (single choke point). The on-chain
@@ -381,6 +394,7 @@ async function tryMintForUser(
         console.log(
             `[strategy] daily cap reached for chat ${chatId} ($${dailyCapUsd.toFixed(2)}) — skipping mint`
         );
+        await recordHeartbeat(chatId, `paused · daily cap $${dailyCapUsd.toFixed(2)} reached`);
         return;
     }
 
@@ -473,6 +487,20 @@ async function tryMintForUser(
             topic: oracleLabel,
             text: plan.noteForSelf,
         });
+    }
+
+    // Heartbeat the mint outcome.
+    if (settled.length > 0) {
+        const totalCover = settled.reduce(
+            (s, m) => s + m.attempt.coverUsd,
+            0
+        );
+        await recordHeartbeat(
+            chatId,
+            `minted ${settled.length} on ${oracleLabel} · $${totalCover.toFixed(2)} cover`
+        );
+    } else if (failed.length > 0) {
+        await recordHeartbeat(chatId, `mint failed (${failed.length} leg(s))`);
     }
 
     if (settled.length === 0 && failed.length === 0) return;
@@ -692,6 +720,15 @@ export function startStrategyLoop(bot: Telegraf): () => void {
                     `[strategy] oracle ${oracle.oracle_id.slice(0, 10)} has no achievable edge ` +
                         `(min implied ${(minImplied * 100).toFixed(0)}% > ${((1 - EDGE_THRESHOLD) * 100).toFixed(0)}%) — ` +
                         `skipping LLM for all users this tick`
+                );
+                const lbl = `${oracle.underlying_asset}-${approxBucket(oracle.expiry - Date.now())}`;
+                await Promise.all(
+                    subs.map((s) =>
+                        recordHeartbeat(
+                            s.chatId,
+                            `passed · no edge on ${lbl} (table ~100% implied)`
+                        )
+                    )
                 );
                 return;
             }

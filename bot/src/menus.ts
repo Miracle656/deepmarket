@@ -180,6 +180,10 @@ export interface BotTraderState {
     lastAgentNote?: string;
     /** MemWal (Walrus-backed semantic memory) is wired up + reachable. */
     memwalOn?: boolean;
+    /** Heartbeat: epoch ms of the last strategy tick that evaluated this user. */
+    lastCheckAt?: number;
+    /** Heartbeat: short outcome of that last tick. */
+    lastOutcome?: string;
 }
 
 export function botTraderMenu(state: BotTraderState): {
@@ -242,6 +246,13 @@ export function botTraderMenu(state: BotTraderState): {
                 : '') +
             (state.memwalOn ? `  ·  🐋 MemWal` : ''),
     ];
+    if (state.strategyOn && state.lastCheckAt) {
+        const t = new Date(state.lastCheckAt).toLocaleTimeString([], {
+            hour: '2-digit',
+            minute: '2-digit',
+        });
+        lines.push(`💓 Last check ${t} — ${state.lastOutcome ?? 'evaluated'}`);
+    }
     if (state.lastAgentNote) {
         lines.push(`📝 _${state.lastAgentNote}_`);
     }
