@@ -131,12 +131,23 @@ debounce. You see:
 
 The mint sidebar has a **Binary | Range** toggle. Range mode shows two
 strike grids (Lower / Higher) with disabled overlap states, and the chart
-draws two dashed band lines instead of a single strike line.
+draws two dashed band lines instead of a single strike line. A range position
+pays `quantity` if the underlying settles inside `(lower, higher]`, else $0.
 
-<Callout type="warning">
-  Mysten's predict-server doesn't yet index range positions
-  (`/managers/:id/range-positions/summary` returns 404). Mints succeed
-  on-chain but range positions don't appear in the panel yet.
+```
+range_key::new(oracle, expiry, lower_strike, higher_strike)
+predict::mint_range<dUSDC>(predict, manager, oracle, key, quantity, clock)
+predict::redeem_range<dUSDC>(predict, manager, oracle, key, quantity, clock)
+```
+
+<Callout type="info">
+  Mysten's predict-server does **not** index range positions
+  (`/managers/:id/range-positions/summary` returns 404, and
+  `/positions/summary` is binary-only). DeepMarket instead reads them
+  **directly from chain** — the manager's `range_positions: Table<RangeKey, u64>`
+  — and renders them under a dedicated **Your range positions** panel with a
+  **Redeem range** button. So range mint *and* redeem are fully supported in
+  the UI despite the server gap.
 </Callout>
 
 ## SVI volatility surface

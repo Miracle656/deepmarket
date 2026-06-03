@@ -27,11 +27,22 @@ protocol-level reference (Move calls, vault internals, SVI math), see
 ### Open the oracle list
 
 Go to **/predict**. You'll see active oracles (rolling sub-hour BTC expiries)
-sorted by **Expiring soon** by default. Switch sort to **Newest** or
-**Furthest** with the toggle in the top right of the list.
+sorted by **Expiring soon** by default. The sort toggle in the top right offers:
+
+- **Expiring soon** / **Furthest** — by time to expiry.
+- **Newest** — most recently activated.
+- **Most traded** — ranked by live trade count (descending).
+
+<Callout type="info">
+  **Most testnet oracles have zero trades** — activity concentrates on a
+  handful at a time. Use **Most traded** to jump straight to the live ones
+  (otherwise you'll open oracles with an empty Trades tape). Each active card
+  shows a small **`N trades` / `no trades`** badge so you can see at a glance
+  which oracles have flow before clicking in.
+</Callout>
 
 Each oracle card shows the underlying, status (Active / Pending / Settled),
-expiry (`in Xm` / `in Xh`), and the min-strike floor.
+expiry (`in Xm` / `in Xh`), the trade-activity badge, and the min-strike floor.
 
 ### Pick an oracle
 
@@ -120,6 +131,71 @@ Click the per-position button:
 
 When you want to take dUSDC out of the manager: top of the sidebar shows
 **Withdraw $X → wallet**. One tx; dUSDC returns to your address.
+
+</Steps>
+
+## Trade a range option (band)
+
+A **range** option pays out if BTC settles **inside** a band `[lower, higher]`
+at expiry, and $0 otherwise. It's the play when you expect the underlying to
+stay rangebound rather than move directionally.
+
+<Steps>
+
+### Switch the sidebar to Range
+
+On an **Active** oracle, toggle **Binary | Range** at the top of the mint
+sidebar to **Range**.
+
+### Pick the band
+
+Two strike grids appear:
+
+- **Lower strike** — the bottom of the band. Higher strikes are disabled once a
+  higher bound is set (and vice-versa), so the band is always valid
+  (`lower < higher`).
+- **Higher strike** — the top of the band.
+
+Both strikes snap to the oracle's `tick_size` grid.
+
+### Pick a quantity
+
+Same quick chips (`$1`, `$5`, `$10`, `$25`) or a custom amount. Quantity is your
+**max payout** — what you receive if BTC settles inside the band. The sidebar
+live-quotes **Cost / Payout / Implied prob** from a debounced devInspect of
+`predict::get_range_trade_amounts` (no tx, no gas).
+
+### Confirm & sign
+
+Click **Mint range** (or **Deposit & mint range** on first use). One signature.
+The tx:
+
+1. Deposits dUSDC into the manager (if needed)
+2. Constructs the `RangeKey` for `(oracle, expiry, lower, higher)`
+3. Calls `predict::mint_range` for `quantity`
+
+<Callout type="info">
+  Range positions are stored on-chain in the manager's `range_positions` table
+  and are **not** served by the Predict server's positions endpoint. DeepMarket
+  reads them directly from chain, so they show up under their own panel
+  (below) rather than in the binary **Your positions** list.
+</Callout>
+
+### Redeem a range position
+
+Open range positions for the current oracle appear under **Your range
+positions** in the sidebar, each showing the band (`$lower – $higher`), open
+cover, and expiry.
+
+Click **Redeem range** to settle it:
+
+- **Before expiry** — redeems at the live bid (take profit / cut loss early).
+- **After settlement** — claims the payout if BTC landed inside the band; clears
+  the position if it didn't.
+
+Payout flows back into the manager's dUSDC balance (then **Withdraw → wallet**
+when you want it out). One signature, calling `range_key::new` →
+`predict::redeem_range`.
 
 </Steps>
 
