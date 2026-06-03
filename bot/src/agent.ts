@@ -143,7 +143,7 @@ Trade mechanics:
 
 You will respond by calling the submit_decision tool exactly once. Never reply with prose.`;
 
-function buildUserPrompt(
+export function buildUserPrompt(
     ctx: AgentContext,
     defaultCoverUsd: number,
     recalledMemories: string[] = []

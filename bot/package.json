@@ -9,6 +9,7 @@
     "dev": "tsx watch src/index.ts",
     "start": "node dist/index.js",
     "keeper": "tsx src/keeper.ts",
+    "dryrun": "tsx src/dryrun-agent.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
