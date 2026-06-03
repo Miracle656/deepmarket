@@ -43,6 +43,7 @@ import {
     setDemoMode,
 } from './strategy.js';
 import { openTradePanel, registerTradePanel } from './trade-panel.js';
+import { handleChat, isChatAvailable } from './chat-agent.js';
 import { isAgentAvailable } from './agent.js';
 import { getMemory } from './memory.js';
 import { isMemWalAvailable, pingMemWal } from './memwal.js';
@@ -477,7 +478,21 @@ async function main() {
             return;
         }
 
-        if (!SUI_ADDR_RE.test(text)) return next();
+        // Non-address text → conversational assistant (read-only NL chat:
+        // positions, oracles, account). Preserve exact-match command words for
+        // downstream bot.hears handlers, and fall through if chat is disabled.
+        if (!SUI_ADDR_RE.test(text)) {
+            if (text.toLowerCase() === 'rotate-yes') return next();
+            if (isChatAvailable()) {
+                await ctx.sendChatAction('typing').catch(() => {});
+                const reply = await handleChat(ctx.chat.id, text);
+                if (reply) {
+                    await ctx.reply(reply);
+                    return;
+                }
+            }
+            return next();
+        }
         await upsertSubscription(ctx.chat.id, text);
         await ctx.reply(
             `✅ Now tracking \`${text.slice(0, 10)}…${text.slice(-6)}\`.`,
@@ -856,8 +871,8 @@ async function main() {
                 mode: webhookDomain ? 'webhook' : 'long-poll',
                 // Bump on each deploy you want to verify is live. If GET /health
                 // doesn't show this build, your host deployed an older commit.
-                build: 'trade-panel+demo-toggle+tick+dm-fix+oracle-callback',
-                features: ['trade-panel', 'demo-toggle', 'tick-endpoint', 'markdown-safe-dm', 'oracle-callback'],
+                build: 'trade-panel+oracle-callback+nl-chat',
+                features: ['trade-panel', 'demo-toggle', 'tick-endpoint', 'markdown-safe-dm', 'oracle-callback', 'nl-chat'],
             });
         });
         app.get('/', (_req, res) => {
