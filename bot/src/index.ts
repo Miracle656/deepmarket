@@ -822,6 +822,10 @@ async function main() {
                 service: 'deepmarket-bot',
                 status: 'ok',
                 mode: webhookDomain ? 'webhook' : 'long-poll',
+                // Bump on each deploy you want to verify is live. If GET /health
+                // doesn't show this build, your host deployed an older commit.
+                build: 'trade-panel+demo-toggle+tick+dm-fix',
+                features: ['trade-panel', 'demo-toggle', 'tick-endpoint', 'markdown-safe-dm'],
             });
         });
         app.get('/', (_req, res) => {
