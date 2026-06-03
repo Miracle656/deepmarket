@@ -406,17 +406,25 @@ function clamp(v: number, lo: number, hi: number): number {
  * authorization in the current model).
  */
 async function resolveCap(sub: Subscription): Promise<AgentCapInfo | null> {
+    const wallet = sub.botWalletAddr?.toLowerCase();
     if (sub.agentCapId) {
         const state = await getAgentCapState(sub.agentCapId);
-        if (state && state.revoked !== sub.agentCapRevoked) {
-            await patchSubscription(sub.chatId, {
-                agentCapRevoked: state.revoked,
-            });
+        // Only trust the cached cap if it still belongs to the CURRENT bot
+        // wallet. After a wallet rotation the cached cap is for the old agent,
+        // and record_decision would abort on the Move `cap.agent == sender`
+        // assert — so fall through and re-discover the right cap.
+        if (state && (!wallet || state.agent.toLowerCase() === wallet)) {
+            if (state.revoked !== sub.agentCapRevoked) {
+                await patchSubscription(sub.chatId, {
+                    agentCapRevoked: state.revoked,
+                });
+            }
+            return state;
         }
-        return state;
+        // stale (wrong agent / gone) — re-discover below.
     }
-    if (!sub.botWalletAddr) return null;
-    const discovered = await findAgentCapForBot(sub.botWalletAddr);
+    if (!wallet) return null;
+    const discovered = await findAgentCapForBot(wallet);
     if (discovered) {
         await patchSubscription(sub.chatId, {
             agentCapId: discovered.capId,
