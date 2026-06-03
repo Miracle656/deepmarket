@@ -551,7 +551,7 @@ async function main() {
 
     function buildTradeLines(trades: Awaited<ReturnType<typeof recentTrades>>): string[] {
         return trades.map((t) => {
-            const when = new Date(t.ts).toLocaleTimeString();
+            const when = formatExpiry(t.ts); // relative ("3m ago") — tz-proof
             if (t.type === 'init-manager') return `${when}  init`;
             if (t.type === 'mint') {
                 const usd = (t.quantity ?? 0) / 1_000_000;
@@ -871,7 +871,7 @@ async function main() {
                 mode: webhookDomain ? 'webhook' : 'long-poll',
                 // Bump on each deploy you want to verify is live. If GET /health
                 // doesn't show this build, your host deployed an older commit.
-                build: 'trade-panel+oracle-callback+nl-chat',
+                build: 'nl-chat+capfix+relative-time',
                 features: ['trade-panel', 'demo-toggle', 'tick-endpoint', 'markdown-safe-dm', 'oracle-callback', 'nl-chat'],
             });
         });

@@ -31,6 +31,7 @@ import {
 import { rememberTrade, isMemWalAvailable } from './memwal.js';
 import {
     dusdcToUsd,
+    formatExpiry,
     getManagerPositions,
     getOracleState,
     listActiveOracles,
@@ -639,7 +640,7 @@ async function tryMintForUser(
     }
     lines.push('');
     lines.push(
-        `Spot: $${spotUsd.toFixed(2)}  ·  Expires ${new Date(oracle.expiry).toLocaleTimeString()}`
+        `Spot: $${spotUsd.toFixed(2)}  ·  Expires ${formatExpiry(oracle.expiry)}`
     );
     lines.push(`_${mdSafe(plan.summaryRationale)}_`);
     if (settled[0]) {

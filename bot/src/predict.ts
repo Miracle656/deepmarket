@@ -257,15 +257,17 @@ export function dusdcToUsd(raw: number): number {
     return raw / DUSDC_SCALE;
 }
 
+/** Fully relative, timezone-proof expiry label. Telegram can't know each
+ *  user's timezone, so absolute clock times are always wrong for someone —
+ *  relative ("in 9m" / "3m ago") is correct for everyone. */
 export function formatExpiry(expiryMs: number): string {
-    const d = new Date(expiryMs);
-    const now = Date.now();
-    const diff = expiryMs - now;
-    if (diff < 0) {
-        return `${d.toLocaleString()} (settled)`;
-    }
-    if (diff < 60_000) return `in ${Math.floor(diff / 1000)}s`;
-    if (diff < 3_600_000) return `in ${Math.floor(diff / 60_000)}m`;
-    if (diff < 86_400_000) return `in ${Math.floor(diff / 3_600_000)}h`;
-    return d.toLocaleString();
+    const diff = expiryMs - Date.now();
+    const past = diff < 0;
+    const a = Math.abs(diff);
+    let s: string;
+    if (a < 60_000) s = `${Math.floor(a / 1000)}s`;
+    else if (a < 3_600_000) s = `${Math.floor(a / 60_000)}m`;
+    else if (a < 86_400_000) s = `${Math.floor(a / 3_600_000)}h`;
+    else s = `${Math.floor(a / 86_400_000)}d`;
+    return past ? `${s} ago` : `in ${s}`;
 }

@@ -5,6 +5,7 @@
 import type { InlineKeyboardMarkup } from 'telegraf/types';
 import { CONFIG } from './config.js';
 import type { OracleSummary, Position } from './predict.js';
+import { formatExpiry } from './predict.js';
 import type { SpotMarket } from './spot.js';
 
 export interface Alert {
@@ -48,7 +49,7 @@ export function alertStrikeCrossed(
     const text = [
         `*${esc(oracle.underlying_asset)} spot ${esc(dir)} ${esc(fmtUsd(strikeUsd))}*`,
         `Current: ${esc(fmtUsd(spotUsd))}`,
-        `Expiry: ${esc(new Date(oracle.expiry).toLocaleString())}`,
+        `Expiry: ${esc(formatExpiry(oracle.expiry))}`,
         '',
         `_If you hold an UP@${esc(fmtUsd(strikeUsd))} position, you're now ${crossedUp ? 'in the money' : 'out of the money'}\\._`,
     ].join('\n');
@@ -70,7 +71,7 @@ export function alertOracleNearExpiry(
     const minutes = Math.max(1, Math.floor(msToExpiry / 60_000));
     const text = [
         `*${esc(oracle.underlying_asset)} oracle settling in ~${minutes}m*`,
-        `Expires: ${esc(new Date(oracle.expiry).toLocaleString())}`,
+        `Expires: ${esc(formatExpiry(oracle.expiry))}`,
         '',
         `_Last chance to sell open positions before settlement freezes payouts\\._`,
     ].join('\n');
