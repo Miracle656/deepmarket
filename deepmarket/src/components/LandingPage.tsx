@@ -9,13 +9,14 @@ import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { ArrowRight, ExternalLink, Menu, X, Send /* Sun, Moon — theme toggle commented out (dark-locked) */ } from 'lucide-react';
 
+import LandingStats from './LandingStats';
+
 /** Official DeepMarket Telegram trading bot. */
 const TG_BOT_URL = 'https://t.me/sui_deepMarket_bot';
 
 /** DeepBook-family electric blue — the single accent for the revamped landing. */
 const DB_BLUE = '#1E6EF3';
 import { useMarkets } from '../lib/useMarkets';
-import { formatVol } from '../App';
 // import { rippleThemeToggle } from '../lib/themeToggle'; // theme toggle commented out (dark-locked)
 import deepMarketLogo from '../assets/deepmarket.png';
 import suiDroplet from '../assets/sui-droplet.svg';
@@ -90,9 +91,6 @@ export default function LandingPage() {
         document.documentElement.setAttribute('data-theme', theme);
         localStorage.setItem('dm-theme', theme);
     }, [theme]);
-
-    const activeCount = markets.filter(m => m.status === 'Active').length;
-    const totalVol    = markets.reduce((s, m) => s + m.volume, 0);
 
     // ── GSAP: hero text sequential stagger ──
     useEffect(() => {
@@ -187,14 +185,14 @@ export default function LandingPage() {
     return (
         <div className="landing-root">
 
-            {/* ═══════════ Announcement banner (DeepBook-style) ═══════════ */}
+            {/* ═══════════ Announcement banner (fixed, DeepBook-style) ═══════════ */}
             <a
                 href={TG_BOT_URL}
                 target="_blank"
                 rel="noopener noreferrer"
                 style={{
+                    position: 'fixed', top: 0, left: 0, right: 0, zIndex: 201,
                     display: 'block',
-                    width: '100%',
                     background: DB_BLUE,
                     color: '#fff',
                     textAlign: 'center',
@@ -208,12 +206,11 @@ export default function LandingPage() {
                 Live on Sui testnet · Trade prediction markets from Telegram →
             </a>
 
-            {/* ══════════════════════ NAVBAR (floating pill) ══════════════════════ */}
+            {/* ══════════════════════ NAVBAR (fixed floating pill) ══════════════════════ */}
             <nav className="landing-nav" style={{
-                position: 'sticky', top: 12, zIndex: 200,
+                position: 'fixed', top: 46, left: '50%', transform: 'translateX(-50%)', zIndex: 200,
                 height: 60,
-                maxWidth: 1000,
-                margin: '12px auto 0',
+                width: 'min(1000px, calc(100% - 24px))',
                 display: 'flex', alignItems: 'center', gap: 12,
                 padding: '0 14px 0 22px',
                 borderRadius: 18,
@@ -367,7 +364,7 @@ export default function LandingPage() {
             )}
 
             {/* ══════════════════════ HERO ══════════════════════ */}
-            <section ref={heroRef} style={{ position: 'relative' }}>
+            <section ref={heroRef} style={{ position: 'relative', paddingTop: 132 }}>
                 {/* Background ghost asset */}
                 <div style={{
                     position: 'absolute', top: '10%', left: '50%', transform: 'translateX(-50%)',
@@ -540,48 +537,9 @@ export default function LandingPage() {
                 </div>{/* /lp-hero-inner */}
             </section>
 
-            {/* ══════════════════════ STATS ══════════════════════ */}
-            <div ref={statsRef} className="lp-stats-wrap">
-                <div className="lp-stats-grid">
-                    {[
-                        { label: 'Active Markets',  num: activeCount,       suffix: '',  isCount: true },
-                        { label: 'Total Volume',     num: null,              suffix: '',  display: formatVol(totalVol) },
-                        { label: 'Total Markets',    num: markets.length,    suffix: '',  isCount: true },
-                        { label: 'Avg Probability',  num: markets.length > 0 ? Math.round(markets.reduce((s, m) => s + m.yesPrice, 0) / markets.length) : 50, suffix: '%', isCount: true },
-                    ].map((s, i) => (
-                        <motion.div
-                            key={i}
-                            style={{
-                                padding: '28px 24px',
-                                textAlign: 'center',
-                            }}
-                            initial={{ opacity: 0, y: 16 }}
-                            whileInView={{ opacity: 1, y: 0 }}
-                            viewport={{ once: true }}
-                            transition={{ delay: i * 0.08, duration: 0.5 }}
-                        >
-                            <div style={{
-                                fontSize: '0.68rem', fontWeight: 700, textTransform: 'uppercase',
-                                letterSpacing: '0.1em', color: 'var(--text-muted)', marginBottom: 10,
-                            }}>
-                                {s.label}
-                            </div>
-                            <div style={{
-                                fontFamily: "'Doto', monospace",
-                                fontSize: '2.4rem', fontWeight: 900,
-                                color: 'var(--text-primary)',
-                                letterSpacing: '-0.02em',
-                                lineHeight: 1,
-                            }}>
-                                {s.isCount ? (
-                                    <span data-count={s.num}>{s.num}{s.suffix}</span>
-                                ) : (
-                                    <span>{s.display}</span>
-                                )}
-                            </div>
-                        </motion.div>
-                    ))}
-                </div>
+            {/* ══════════════════════ STATS (DeepBook-style crop-mark panels) ══════════════════════ */}
+            <div ref={statsRef}>
+                <LandingStats />
             </div>
 
             {/* ══════════════════════ MARQUEE ══════════════════════ */}
