@@ -253,6 +253,71 @@ html::-webkit-scrollbar-thumb:hover,
 @media (max-width: 980px) { .db-feat-grid { grid-template-columns: repeat(2, 1fr); } }
 @media (max-width: 560px) { .db-feat-grid { grid-template-columns: 1fr; } }
 
+/* ── Full-blue footer with the bleeding "DeepMarket" wordmark ── */
+.db-footer {
+  position: relative;
+  background: #1E6EF3;
+  color: #fff;
+  padding: 64px 32px 0;
+  overflow: hidden;
+}
+.db-footer-cols {
+  position: relative;
+  z-index: 2;
+  max-width: 1180px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: 1.6fr repeat(4, 1fr);
+  gap: 28px;
+  padding-bottom: 40px;
+}
+.db-footer-brand p {
+  margin: 14px 0 16px;
+  font-size: 0.88rem;
+  line-height: 1.6;
+  color: rgba(255, 255, 255, 0.82);
+  max-width: 320px;
+}
+.db-footer-logo { display: flex; align-items: center; gap: 9px; font-weight: 800; font-size: 1.05rem; }
+.db-footer-logo img { width: 28px; height: 28px; object-fit: contain; filter: brightness(0) invert(1); }
+.db-footer-sui {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 0.8rem; color: rgba(255, 255, 255, 0.85);
+}
+.db-footer-sui img { filter: brightness(0) invert(1); opacity: 0.9; }
+.db-footer-h {
+  font-size: 0.78rem; font-weight: 700;
+  color: rgba(255, 255, 255, 0.55);
+  margin-bottom: 14px;
+}
+.db-footer-col { display: flex; flex-direction: column; align-items: flex-start; gap: 11px; }
+.db-footer-col a,
+.db-footer-col button {
+  background: none; border: none; padding: 0; cursor: pointer;
+  font-family: inherit; font-size: 0.92rem; font-weight: 600;
+  color: #fff; text-decoration: none; text-align: left;
+  opacity: 0.92; transition: opacity 140ms ease;
+}
+.db-footer-col a:hover,
+.db-footer-col button:hover { opacity: 0.65; }
+/* giant wordmark bleeding off the bottom edge */
+.db-footer-wordmark {
+  font-size: clamp(5rem, 21vw, 17rem);
+  font-weight: 900;
+  letter-spacing: -0.05em;
+  line-height: 0.74;
+  color: #fff;
+  white-space: nowrap;
+  user-select: none;
+  pointer-events: none;
+  margin: 0 -32px;
+  transform: translateY(26%);
+}
+@media (max-width: 880px) {
+  .db-footer-cols { grid-template-columns: 1fr 1fr; }
+  .db-footer-brand { grid-column: 1 / -1; }
+}
+
 /* ── Theme switch: smooth color morphing on all elements ── */
 html.theme-switching *:not([style*="border-radius: 50%"]),
 html.theme-switching *::before,

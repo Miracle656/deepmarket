@@ -676,50 +676,58 @@ export default function LandingPage() {
                 </motion.div>
             </section>
 
-            {/* ══════════════════════ FOOTER ══════════════════════ */}
-            <footer style={{
-                borderTop: '1px solid var(--border-base)',
-                padding: '24px 32px',
-                display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12,
-            }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <div style={{
-                        width: 28, height: 28,
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    }}>
-                        <img src={deepMarketLogo} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+            {/* ══════════════════════ FOOTER (full-blue, bleeding wordmark) ══════════════════════ */}
+            <footer className="db-footer">
+                <div className="db-footer-cols">
+                    <div className="db-footer-brand">
+                        <div className="db-footer-logo">
+                            <img src={deepMarketLogo} alt="DeepMarket" />
+                            <span>DeepMarket</span>
+                        </div>
+                        <p>Prediction markets + DeepBook Predict, on Sui. On-chain positions, verifiable outcomes, an optional AI agent.</p>
+                        <span className="db-footer-sui">
+                            Powered by
+                            <img src={suiDroplet} alt="Sui" width={12} height={15} />
+                            Sui
+                        </span>
                     </div>
-                    <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontWeight: 600 }}>DeepMarket</span>
-                    {/* Powered by Sui — only place the Sui mark is used as a brand element. */}
-                    <span style={{
-                        display: 'inline-flex', alignItems: 'center', gap: 6,
-                        fontSize: '0.78rem', color: 'var(--text-muted)',
-                        paddingLeft: 10, marginLeft: 4,
-                        borderLeft: '1px solid var(--border-base)',
-                    }}>
-                        Powered by
-                        <img src={suiDroplet} alt="Sui" width={12} height={15} style={{ objectFit: 'contain', opacity: 0.85 }} />
-                        <span style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>Sui</span>
-                    </span>
-                </div>
-                <div style={{ display: 'flex', gap: 24, fontSize: '0.78rem' }}>
-                    {[
-                        { label: 'Markets',     action: () => navigate('/markets') },
-                        { label: 'Portfolio',   action: () => navigate('/portfolio') },
-                        { label: 'About',       action: () => navigate('/about') },
-                    ].map(({ label, action }) => (
-                        <button
-                            key={label}
-                            onClick={action}
-                            style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontFamily: 'inherit', fontSize: 'inherit', padding: 0 }}
+
+                    <div className="db-footer-col">
+                        <div className="db-footer-h">Trade</div>
+                        <button onClick={() => navigate('/markets')}>Markets</button>
+                        <button onClick={() => navigate('/predict')}>Predict</button>
+                        <button onClick={() => navigate('/portfolio')}>Portfolio</button>
+                        <button onClick={() => navigate('/leaderboard')}>Leaderboard</button>
+                    </div>
+
+                    <div className="db-footer-col">
+                        <div className="db-footer-h">Build</div>
+                        <a href={CONFIG.DOCS_URL} target="_blank" rel="noopener noreferrer">Docs ↗</a>
+                        <a
+                            href={`https://suiscan.xyz/testnet/object/${import.meta.env.VITE_PACKAGE_ID}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
                         >
-                            {label}
-                        </button>
-                    ))}
-                    <a href="https://suiscan.xyz/testnet" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--text-secondary)', textDecoration: 'none' }}>
-                        SuiScan ↗
-                    </a>
+                            Contract ↗
+                        </a>
+                        <button onClick={() => navigate('/vault')}>Vault (LP)</button>
+                    </div>
+
+                    <div className="db-footer-col">
+                        <div className="db-footer-h">Resources</div>
+                        <button onClick={() => navigate('/agents')}>Agent feed</button>
+                        <button onClick={() => navigate('/health')}>Oracle health</button>
+                        <button onClick={() => navigate('/about')}>About</button>
+                    </div>
+
+                    <div className="db-footer-col">
+                        <div className="db-footer-h">Community</div>
+                        <a href={TG_BOT_URL} target="_blank" rel="noopener noreferrer">Telegram bot ↗</a>
+                        <a href="https://suiscan.xyz/testnet" target="_blank" rel="noopener noreferrer">SuiScan ↗</a>
+                    </div>
                 </div>
+
+                <div className="db-footer-wordmark" aria-hidden>DeepMarket</div>
             </footer>
         </div>
     );
