@@ -10,6 +10,7 @@ import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { ArrowRight, ExternalLink, Menu, X, Send /* Sun, Moon — theme toggle commented out (dark-locked) */ } from 'lucide-react';
 
 import LandingStats from './LandingStats';
+import LandingFeatures from './LandingFeatures';
 
 /** Official DeepMarket Telegram trading bot. */
 const TG_BOT_URL = 'https://t.me/sui_deepMarket_bot';
@@ -535,6 +536,9 @@ export default function LandingPage() {
             <div ref={statsRef}>
                 <LandingStats />
             </div>
+
+            {/* ══════════════════════ WHY DEEPMARKET — numbered feature cards ══════════════════════ */}
+            <LandingFeatures />
 
             {/* ══════════════════════ MARQUEE ══════════════════════ */}
             <MarqueeRow />
