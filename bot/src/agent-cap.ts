@@ -157,71 +157,90 @@ export async function recordDecision(
         createHash('sha256').update(p.rationale).digest()
     );
 
-    const tx = new Transaction();
-
-    // Pin the shared AgentCap as an IMMUTABLE shared ref at its initial shared
-    // version. record_decision takes `&AgentCap` (read-only); letting
-    // tx.object() auto-resolve produced "Transaction needs to be rebuilt"
-    // (stale shared version / wrong mutability). Referencing by
-    // initialSharedVersion is version-stable — the validator resolves current.
-    let capArg = tx.object(p.capId);
+    // Resolve the cap's initial shared version once (constant per object).
+    let initialSharedVersion: number | null = null;
     try {
-        const capObj = await sui.getObject({
-            id: p.capId,
-            options: { showOwner: true },
-        });
+        const capObj = await sui.getObject({ id: p.capId, options: { showOwner: true } });
         const owner = capObj.data?.owner;
         if (owner && typeof owner === 'object' && 'Shared' in owner) {
-            capArg = tx.object(
-                Inputs.SharedObjectRef({
-                    objectId: p.capId,
-                    initialSharedVersion: Number(
-                        (owner as { Shared: { initial_shared_version: number | string } })
-                            .Shared.initial_shared_version
-                    ),
-                    mutable: false,
-                })
+            initialSharedVersion = Number(
+                (owner as { Shared: { initial_shared_version: number | string } })
+                    .Shared.initial_shared_version
             );
         }
     } catch {
-        /* fall back to tx.object(capId) */
+        /* fall back to tx.object(capId) below */
     }
 
-    tx.moveCall({
-        target: `${PKG}::agent_cap::record_decision`,
-        arguments: [
-            capArg,
-            tx.pure.id(p.oracleId),
-            tx.pure.bool(p.isMint),
-            tx.pure.bool(p.directionUp),
-            tx.pure.u64(BigInt(Math.floor(p.strike))),
-            tx.pure.u64(BigInt(Math.floor(p.coverUsd))),
-            tx.pure.vector('u8', rationaleHash),
-            tx.object(CONFIG.CLOCK),
-        ],
-    });
-
-    try {
-        const res = await sui.signAndExecuteTransaction({
-            signer: kp,
-            transaction: tx,
-            options: { showEffects: true },
+    // Rebuild a fresh tx each attempt (a Transaction is single-use, and a fresh
+    // build re-resolves the gas coin — important for the retry path).
+    const buildTx = () => {
+        const tx = new Transaction();
+        const capArg =
+            initialSharedVersion != null
+                ? tx.object(
+                      Inputs.SharedObjectRef({
+                          objectId: p.capId,
+                          initialSharedVersion,
+                          mutable: false, // record_decision takes &AgentCap (read-only)
+                      })
+                  )
+                : tx.object(p.capId);
+        tx.moveCall({
+            target: `${PKG}::agent_cap::record_decision`,
+            arguments: [
+                capArg,
+                tx.pure.id(p.oracleId),
+                tx.pure.bool(p.isMint),
+                tx.pure.bool(p.directionUp),
+                tx.pure.u64(BigInt(Math.floor(p.strike))),
+                tx.pure.u64(BigInt(Math.floor(p.coverUsd))),
+                tx.pure.vector('u8', rationaleHash),
+                tx.object(CONFIG.CLOCK),
+            ],
         });
-        if (res.effects?.status.status !== 'success') {
-            const err = res.effects?.status.error ?? 'unknown';
+        return tx;
+    };
+
+    // record_decision fires right after the mint tx, so the bot wallet's new
+    // gas-coin version may not have propagated to every validator yet → a
+    // transient "rejected as invalid by >1/3 of validators". Retry with backoff.
+    const MAX_ATTEMPTS = 3;
+    const isTransient = (m: string) =>
+        /rejected as invalid|not available for consumption|is not available|version|equivocat|deadline|timed out|ECONNRESET|fetch failed|503|502/i.test(
+            m
+        );
+
+    let lastErr = 'unknown';
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+        try {
+            const res = await sui.signAndExecuteTransaction({
+                signer: kp,
+                transaction: buildTx(),
+                options: { showEffects: true },
+            });
+            if (res.effects?.status.status === 'success') {
+                return { digest: res.digest };
+            }
+            // Executed-but-failed (e.g. a Move assert) — deterministic, no retry.
+            lastErr = res.effects?.status.error ?? 'unknown';
             console.warn(
                 `[agent-cap] record_decision failed for chat ${chatId} (cap ${p.capId}):`,
-                err
+                lastErr
             );
-            return { error: err };
+            return { error: lastErr };
+        } catch (e) {
+            lastErr = e instanceof Error ? e.message : String(e);
+            console.warn(
+                `[agent-cap] record_decision attempt ${attempt}/${MAX_ATTEMPTS} threw for chat ${chatId} (cap ${p.capId}):`,
+                lastErr
+            );
+            if (attempt < MAX_ATTEMPTS && isTransient(lastErr)) {
+                await new Promise((r) => setTimeout(r, 1500 * attempt));
+                continue;
+            }
+            return { error: lastErr };
         }
-        return { digest: res.digest };
-    } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        console.warn(
-            `[agent-cap] record_decision tx threw for chat ${chatId} (cap ${p.capId}):`,
-            msg
-        );
-        return { error: msg };
     }
+    return { error: lastErr };
 }
