@@ -144,11 +144,11 @@ export interface RecordDecisionParams {
 export async function recordDecision(
     chatId: number,
     p: RecordDecisionParams
-): Promise<{ digest: string } | null> {
+): Promise<{ digest: string } | { error: string }> {
     const kp = await getUserKeypair(chatId);
     if (!kp) {
         console.warn(`[agent-cap] no custodial wallet for chat ${chatId}`);
-        return null;
+        return { error: 'no custodial wallet' };
     }
     const sui = getSuiClient();
 
@@ -179,19 +179,20 @@ export async function recordDecision(
             options: { showEffects: true },
         });
         if (res.effects?.status.status !== 'success') {
+            const err = res.effects?.status.error ?? 'unknown';
             console.warn(
-                `[agent-cap] record_decision failed for chat ${chatId}:`,
-                res.effects?.status.error ?? 'unknown'
+                `[agent-cap] record_decision failed for chat ${chatId} (cap ${p.capId}):`,
+                err
             );
-            return null;
+            return { error: err };
         }
         return { digest: res.digest };
     } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         console.warn(
-            `[agent-cap] record_decision tx threw for chat ${chatId}:`,
+            `[agent-cap] record_decision tx threw for chat ${chatId} (cap ${p.capId}):`,
             msg
         );
-        return null;
+        return { error: msg };
     }
 }

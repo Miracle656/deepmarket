@@ -44,7 +44,7 @@ import {
 } from './predict.js';
 import { listAll, patchSubscription, type Subscription } from './store.js';
 import { mintBinary, redeemBinary } from './trader.js';
-import { getUserBalances } from './user-wallet.js';
+import { getUserBalances, getUserKeypair } from './user-wallet.js';
 import {
     findAgentCapForBot,
     getAgentCapState,
@@ -407,14 +407,22 @@ function clamp(v: number, lo: number, hi: number): number {
  * authorization in the current model).
  */
 async function resolveCap(sub: Subscription): Promise<AgentCapInfo | null> {
-    const wallet = sub.botWalletAddr?.toLowerCase();
+    // Source of truth = the address that will actually SIGN record_decision
+    // (derived from the keypair), not sub.botWalletAddr which can drift after a
+    // rotation. record_decision aborts unless cap.agent == sender, so the cap
+    // MUST belong to this exact address.
+    const kp = await getUserKeypair(sub.chatId).catch(() => null);
+    const wallet = (
+        kp?.getPublicKey().toSuiAddress() ??
+        sub.botWalletAddr ??
+        ''
+    ).toLowerCase();
+    if (!wallet) return null;
+
     if (sub.agentCapId) {
         const state = await getAgentCapState(sub.agentCapId);
-        // Only trust the cached cap if it still belongs to the CURRENT bot
-        // wallet. After a wallet rotation the cached cap is for the old agent,
-        // and record_decision would abort on the Move `cap.agent == sender`
-        // assert — so fall through and re-discover the right cap.
-        if (state && (!wallet || state.agent.toLowerCase() === wallet)) {
+        // Trust the cached cap ONLY if its agent matches the signer exactly.
+        if (state && state.agent.toLowerCase() === wallet) {
             if (state.revoked !== sub.agentCapRevoked) {
                 await patchSubscription(sub.chatId, {
                     agentCapRevoked: state.revoked,
@@ -424,7 +432,6 @@ async function resolveCap(sub: Subscription): Promise<AgentCapInfo | null> {
         }
         // stale (wrong agent / gone) — re-discover below.
     }
-    if (!wallet) return null;
     const discovered = await findAgentCapForBot(wallet);
     if (discovered) {
         await patchSubscription(sub.chatId, {
@@ -525,6 +532,7 @@ async function tryMintForUser(
     // Track on-chain decision-log outcome so the DM can report it.
     let decisionsLogged = 0;
     let decisionLogFailed = false;
+    let lastLogError = '';
 
     // Walk the planned mints sequentially — each mint debits the wallet
     // dUSDC, so we deduct as we go to stop minting when the wallet runs dry.
@@ -582,8 +590,11 @@ async function tryMintForUser(
                     coverUsd: Math.floor(attempt.coverUsd * DUSDC_SCALE),
                     rationale: attempt.rationale,
                 });
-                if (rec) decisionsLogged++;
-                else decisionLogFailed = true;
+                if ('digest' in rec) decisionsLogged++;
+                else {
+                    decisionLogFailed = true;
+                    lastLogError = rec.error;
+                }
             }
         } catch (e) {
             const msg = e instanceof Error ? e.message : String(e);
@@ -655,7 +666,10 @@ async function tryMintForUser(
     } else if (decisionsLogged > 0) {
         lines.push(`✓ ${decisionsLogged} decision(s) logged on-chain (AgentCap)`);
     } else if (decisionLogFailed) {
-        lines.push('⚠️ On-chain log failed — cap mismatch/revoked or gas. See logs.');
+        const capShort = cap ? `${cap.capId.slice(0, 10)}…` : '?';
+        lines.push(
+            `⚠️ On-chain log failed (cap ${capShort}): ${mdSafe(lastLogError).slice(0, 90)}`
+        );
     }
     if (settled[0]) {
         lines.push(`\`${settled[0].digest.slice(0, 14)}…\``);
