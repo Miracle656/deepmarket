@@ -16,7 +16,7 @@
 // latest package id (v3, AGENT_CAP_PACKAGE_ID).
 
 import { createHash } from 'crypto';
-import { Transaction } from '@mysten/sui/transactions';
+import { Transaction, Inputs } from '@mysten/sui/transactions';
 import { CONFIG } from './config.js';
 import { getSuiClient } from './sui.js';
 import { getUserKeypair } from './user-wallet.js';
@@ -158,10 +158,39 @@ export async function recordDecision(
     );
 
     const tx = new Transaction();
+
+    // Pin the shared AgentCap as an IMMUTABLE shared ref at its initial shared
+    // version. record_decision takes `&AgentCap` (read-only); letting
+    // tx.object() auto-resolve produced "Transaction needs to be rebuilt"
+    // (stale shared version / wrong mutability). Referencing by
+    // initialSharedVersion is version-stable — the validator resolves current.
+    let capArg = tx.object(p.capId);
+    try {
+        const capObj = await sui.getObject({
+            id: p.capId,
+            options: { showOwner: true },
+        });
+        const owner = capObj.data?.owner;
+        if (owner && typeof owner === 'object' && 'Shared' in owner) {
+            capArg = tx.object(
+                Inputs.SharedObjectRef({
+                    objectId: p.capId,
+                    initialSharedVersion: Number(
+                        (owner as { Shared: { initial_shared_version: number | string } })
+                            .Shared.initial_shared_version
+                    ),
+                    mutable: false,
+                })
+            );
+        }
+    } catch {
+        /* fall back to tx.object(capId) */
+    }
+
     tx.moveCall({
         target: `${PKG}::agent_cap::record_decision`,
         arguments: [
-            tx.object(p.capId),
+            capArg,
             tx.pure.id(p.oracleId),
             tx.pure.bool(p.isMint),
             tx.pure.bool(p.directionUp),
