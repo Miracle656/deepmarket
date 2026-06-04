@@ -433,50 +433,44 @@ export default function LandingPage() {
                         <strong style={{ color: 'var(--text-primary)', fontWeight: 600 }}>autonomous agent</strong>.
                     </p>
 
-                    <div className="h-ctas lp-hero-ctas" style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                    <div className="h-ctas lp-hero-ctas" style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
                         <motion.button
                             className="btn btn-primary"
-                            style={{ fontSize: '0.95rem', padding: '11px 28px', display: 'flex', alignItems: 'center', gap: 8 }}
+                            style={{ fontSize: '0.85rem', padding: '9px 18px', display: 'inline-flex', alignItems: 'center', gap: 7, background: DB_BLUE, border: 'none' }}
                             onClick={() => navigate('/markets')}
-                            whileHover={{ scale: 1.04, boxShadow: '0 0 28px rgba(28,111,255,0.45)' }}
+                            whileHover={{ scale: 1.03 }}
                             whileTap={{ scale: 0.97 }}
                         >
                             Explore Markets
-                            <ArrowRight size={15} />
+                            <ArrowRight size={14} />
                         </motion.button>
-                        <motion.a
-                            href={`https://suiscan.xyz/testnet/object/${import.meta.env.VITE_PACKAGE_ID}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="btn btn-ghost"
-                            style={{ fontSize: '0.95rem', padding: '11px 24px', display: 'flex', alignItems: 'center', gap: 8, textDecoration: 'none' }}
-                            whileHover={{ scale: 1.04 }}
-                            whileTap={{ scale: 0.97 }}
-                        >
-                            View Contract
-                            <ExternalLink size={13} />
-                        </motion.a>
                         <motion.a
                             href={TG_BOT_URL}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="btn"
                             style={{
-                                fontSize: '0.95rem',
-                                padding: '11px 24px',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: 8,
-                                textDecoration: 'none',
-                                background: '#229ED9', // Telegram blue
-                                color: '#fff',
-                                border: 'none',
+                                fontSize: '0.85rem', padding: '9px 16px',
+                                display: 'inline-flex', alignItems: 'center', gap: 7,
+                                textDecoration: 'none', background: '#229ED9', color: '#fff', border: 'none',
                             }}
-                            whileHover={{ scale: 1.04, boxShadow: '0 0 28px rgba(34,158,217,0.45)' }}
+                            whileHover={{ scale: 1.03 }}
                             whileTap={{ scale: 0.97 }}
                         >
-                            <Send size={15} />
+                            <Send size={14} />
                             Trade on Telegram
+                        </motion.a>
+                        <motion.a
+                            href={`https://suiscan.xyz/testnet/object/${import.meta.env.VITE_PACKAGE_ID}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="btn btn-ghost"
+                            style={{ fontSize: '0.85rem', padding: '9px 16px', display: 'inline-flex', alignItems: 'center', gap: 7, textDecoration: 'none' }}
+                            whileHover={{ scale: 1.03 }}
+                            whileTap={{ scale: 0.97 }}
+                        >
+                            View Contract
+                            <ExternalLink size={12} />
                         </motion.a>
                     </div>
                 </div>
