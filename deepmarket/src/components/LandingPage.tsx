@@ -11,6 +11,9 @@ import { ArrowRight, ExternalLink, Menu, X, Send /* Sun, Moon — theme toggle c
 
 /** Official DeepMarket Telegram trading bot. */
 const TG_BOT_URL = 'https://t.me/sui_deepMarket_bot';
+
+/** DeepBook-family electric blue — the single accent for the revamped landing. */
+const DB_BLUE = '#1E6EF3';
 import { useMarkets } from '../lib/useMarkets';
 import { formatVol } from '../App';
 // import { rippleThemeToggle } from '../lib/themeToggle'; // theme toggle commented out (dark-locked)
@@ -184,14 +187,40 @@ export default function LandingPage() {
     return (
         <div className="landing-root">
 
-            {/* ══════════════════════ NAVBAR ══════════════════════ */}
+            {/* ═══════════ Announcement banner (DeepBook-style) ═══════════ */}
+            <a
+                href={TG_BOT_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                    display: 'block',
+                    width: '100%',
+                    background: DB_BLUE,
+                    color: '#fff',
+                    textAlign: 'center',
+                    fontSize: '0.82rem',
+                    fontWeight: 700,
+                    letterSpacing: '0.01em',
+                    padding: '9px 16px',
+                    textDecoration: 'none',
+                }}
+            >
+                Live on Sui testnet · Trade prediction markets from Telegram →
+            </a>
+
+            {/* ══════════════════════ NAVBAR (floating pill) ══════════════════════ */}
             <nav className="landing-nav" style={{
-                position: 'sticky', top: 0, zIndex: 200,
-                height: 56,
+                position: 'sticky', top: 12, zIndex: 200,
+                height: 60,
+                maxWidth: 1000,
+                margin: '12px auto 0',
                 display: 'flex', alignItems: 'center', gap: 12,
-                padding: '0 32px',
-                borderBottom: '1px solid var(--border-base)',
+                padding: '0 14px 0 22px',
+                borderRadius: 18,
+                border: '1px solid rgba(255,255,255,0.08)',
+                background: 'rgba(10,12,16,0.92)',
                 backdropFilter: 'blur(20px)',
+                boxShadow: '0 8px 32px rgba(0,0,0,0.45)',
             }}>
                 {/* Logo — click to go home */}
                 <button
@@ -381,20 +410,14 @@ export default function LandingPage() {
                     */}
 
                     <h1 style={{
-                        fontSize: 'clamp(2.6rem, 5.5vw, 4.2rem)',
-                        fontWeight: 900, lineHeight: 1.06, letterSpacing: '-0.035em',
+                        fontSize: 'clamp(3rem, 6.5vw, 5.2rem)',
+                        fontWeight: 900, lineHeight: 0.98, letterSpacing: '-0.045em',
                         marginBottom: 28,
                     }}>
                         <span className="h-l1" style={{ display: 'block', color: 'var(--text-primary)' }}>
                             Trade outcomes.
                         </span>
-                        <span className="h-l2" style={{
-                            display: 'block',
-                            background: 'linear-gradient(90deg, #4d9fff 0%, #1c6fff 40%, #a78bfa 100%)',
-                            WebkitBackgroundClip: 'text',
-                            WebkitTextFillColor: 'transparent',
-                            backgroundClip: 'text',
-                        }}>
+                        <span className="h-l2" style={{ display: 'block', color: DB_BLUE }}>
                             Predict price on Sui.
                         </span>
                     </h1>
