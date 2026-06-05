@@ -183,11 +183,13 @@ export default function GlobalAgentFeed() {
             )}
 
             {decisions && decisions.length > 0 && (
+              <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', borderRadius: 12 }}>
                 <div
                     style={{
                         border: '1px solid var(--border-base)',
                         borderRadius: 12,
                         overflow: 'hidden',
+                        minWidth: 680, /* keep columns full-width; the wrapper scrolls on phones */
                     }}
                 >
                     <div
@@ -265,6 +267,7 @@ export default function GlobalAgentFeed() {
                         );
                     })}
                 </div>
+              </div>
             )}
 
             <div className="vault-muted" style={{ marginTop: 14, fontSize: '0.78rem', textAlign: 'center' }}>

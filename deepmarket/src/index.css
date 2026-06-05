@@ -18,6 +18,8 @@ html {
 body {
   height: 100%;
   overflow: hidden;
+  /* Kill touch rubber-banding that can drag the fixed shell on mobile. */
+  overscroll-behavior: none;
 }
 
 /* Landing page: re-enable scroll on html/body */
@@ -450,6 +452,12 @@ body {
   display: flex;
   flex-direction: column;
   height: 100vh;
+  /* dvh = the CURRENTLY visible viewport. Plain 100vh on mobile resolves to
+     the toolbar-hidden height, so with the address bar showing the shell is
+     taller than the screen — the user can scroll the whole app up and the
+     sticky navbar (+ hamburger) slides out under the browser chrome. dvh
+     tracks the live visible height, so the navbar stays pinned. */
+  height: 100dvh;
   overflow: hidden;
 }
 
@@ -626,6 +634,14 @@ body {
   gap: 16px;
 }
 
+/* content-area is a flex column, so its page children default to
+   min-width:auto (= min-content) and a single wide child (a data table,
+   chart, or long mono string) forces the whole page wider than the phone,
+   which main-layout's overflow-x:hidden then CLIPS — silently cutting off
+   content on the right. Pinning children to min-width:0 lets them shrink to
+   the viewport so their own inner overflow-x:auto scrolls instead. */
+.content-area > * { min-width: 0; }
+
 /* RIGHT: sticky trading sidebar */
 .trade-sidebar {
   width: 340px;
@@ -650,6 +666,15 @@ body {
   .content-area {
     overflow-y: visible;
   }
+
+  /* Hard-clamp every page root to the viewport so a wide child (data table,
+     chart) can't size its flex-item ancestor past the screen. max-width:100%
+     resolves against the 100%-wide content-area, overriding each page's
+     desktop max-width (1140px etc.) only on small screens. Wide inner blocks
+     then scroll inside their own overflow-x:auto wrapper instead.
+     Selector is two-class (.main-layout .content-area) so it out-specifies
+     each page root's own single-class max-width (e.g. .surface-page:1140px). */
+  .main-layout .content-area > * { max-width: 100%; }
 }
 
 /* ──────────────────────────────── MARKET TICKER BAR ──────────────────────────────── */
@@ -2760,6 +2785,9 @@ body {
     position: fixed;
     bottom: 0; left: 0; right: 0;
     height: 60px;
+    /* sit above the home-indicator / gesture bar on phones that have one */
+    padding-bottom: env(safe-area-inset-bottom);
+    box-sizing: content-box;
     background: rgba(6, 12, 23, 0.97);
     border-top: 1px solid var(--border-base);
     backdrop-filter: blur(16px);
