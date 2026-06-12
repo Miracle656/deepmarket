@@ -1,0 +1,130 @@
+import { Callout, Steps } from 'nextra/components'
+
+# Multi-Outcome Trading Guide
+
+How to stake, trade, and redeem on a **multi-outcome** market (e.g. "Who wins
+the 2026 World Cup?") end to end. Each outcome is its own tradable token; the
+matching engine is the same on-chain order book (DeepBook V3) as the binary
+markets — see [Multi-Outcome Markets](/products/multi-outcome-markets) for the
+model.
+
+<Callout type="info">
+Open a market from the **Multi-Outcome Markets** section on `/markets`, or go
+straight to `/outcome/<marketId>`. The page has four tabs: **Outcomes**,
+**Chart**, **Order Book**, **Activity**.
+</Callout>
+
+## What you need
+
+- A Sui wallet (e.g. **Slush**) with **testnet SUI** for gas and stakes.
+- A little **DEEP** — only if you use the order book (limit orders). DeepBook
+  charges fees in DEEP; the app auto-deposits a small amount per order.
+- **Staking needs no DEEP** — the core mint/redeem flow is pure SUI.
+
+## Two ways to take a position
+
+<Steps>
+
+### Stake (mint a fresh ticket)
+
+In the right-hand ticket, pick an outcome → **Stake** tab → enter SUI → **Stake
+on `<outcome>`**. You receive that outcome's token **1:1**. This is the
+parimutuel mint — you back one outcome and get one token (unlike binary "Mint
+Tokens", which gives a YES *and* a NO pair). No DEEP required.
+
+### Trade on the order book (limit)
+
+Switch to the **Limit ◆** tab to buy/sell an outcome at *your* price against
+other traders. Price is **SUI per token, 0–1** — that's the implied probability
+(`0.40` = 40%). Two sides:
+
+- **Bid (buy)** — deposits `price × qty` SUI as collateral.
+- **Ask (sell)** — deposits `qty` outcome tokens (so you must hold them — Stake
+  first).
+
+</Steps>
+
+## Enabling the order book
+
+<Callout type="warning">
+**Do this once per outcome before your first order on it.** Permissionless
+pools launch with no DEEP price reference, so the first order otherwise aborts
+with `ENoDataPoints` (abort code 2).
+</Callout>
+
+<Steps>
+
+### Enable trading (one-time per wallet)
+
+If you've never traded on DeepMarket, the **Enable trading** banner (or button)
+creates your DeepBook **BalanceManager** and seeds the live pools.
+
+### Sync DEEP price (once per outcome)
+
+In the **Limit ◆** tab, click **Sync DEEP price** before your first order on
+that outcome. (If it says "already primed", you're good.)
+
+### Post your order
+
+Enter price + quantity → **Bid** or **Ask** → approve. The app rounds size to
+the pool lot and deposits the DEEP fee for you.
+
+</Steps>
+
+## Reading the price
+
+Each outcome shows a **headline %** and, when it has live trading, a smaller
+**"N% staked"** with an info icon:
+
+- **Headline %** = the live order-book mid (or last trade) — current market
+  sentiment.
+- **"N% staked"** = the outcome's share of the parimutuel pool — what the bar
+  and your final payout are based on.
+
+These two can differ, and the outcomes' headline %s **don't sum to 100** because
+each trades in its own independent pool. That's expected — see the
+[pricing notes](/products/multi-outcome-markets#pricing--probability).
+
+## After a fill: claim your balances
+
+Limit orders leave their collateral (and any filled proceeds) in your
+**BalanceManager**. After an order fills, click **Claim filled balances** in the
+Limit tab to sweep the bought tokens / sold SUI back to your wallet.
+
+<Callout type="info">
+You can watch your trades land under the **Activity** tab (price, size, time,
+each linking to the transaction), and the resting orders under **Order Book**
+(pick the outcome with the colored chips).
+</Callout>
+
+## Resolution & redeeming
+
+Sports/discrete markets are resolved by the protocol admin (no price oracle).
+Once resolved:
+
+- The winning outcome's token redeems for a **pro-rata share of the whole
+  pool**: `payout = your_tokens × vault / winning_supply`. Click **Redeem
+  winning tokens**.
+- Losing tokens are worth nothing.
+
+<Callout type="warning">
+**Cancel resting orders before resolution.** Resolving doesn't touch the order
+book — open orders stay with collateral locked and can be picked off once the
+winner is known. Cancel them first to reclaim your collateral.
+</Callout>
+
+## Differences from binary YES/NO markets
+
+| | Binary (YES/NO) | Multi-outcome |
+|---|---|---|
+| Outcomes | 2 | 2–64 |
+| Minting | "Mint Tokens" → YES **and** NO pair | "Stake" → the one outcome you pick |
+| Pools | YES pool + NO pool | one pool **per outcome** |
+| Redeem | winner pays **1:1** from vault | winner pays **pro-rata** share of the pool |
+| Claim button | n/a (market orders auto-withdraw) | **Claim filled balances** (limit orders rest) |
+
+## Related
+
+- [Multi-Outcome Markets](/products/multi-outcome-markets) — the model & contract
+- [Spot Trading Guide](/products/trading) — the binary equivalent
+- [Deployed Contracts](/reference/contracts) — package & object ids
