@@ -1,0 +1,262 @@
+import { Callout, Steps } from 'nextra/components'
+
+# Multi-Outcome Markets
+
+Prediction markets with **any number of mutually-exclusive outcomes** (2–64),
+each its own tradable token. "Who wins the 2026 World Cup?" with
+{Spain, France, England, Argentina}; a 3-horse race; a 32-team bracket — one
+generic contract serves every `N`.
+
+This is the multi-outcome generalization of the binary
+[Spot YES/NO Markets](/products/spot-markets). It lives in the
+`outcome_market` Move module and uses a **tokenized parimutuel** core with an
+**optional DeepBook order book per outcome**.
+
+<Callout type="info">
+  Try it at `/markets` → **+ Multi-Outcome**, or open a market directly at
+  `/outcome/<marketObjectId>`.
+</Callout>
+
+## Why this shape (not a fixed `MarketData4`)
+
+Move generics are monomorphic: a struct can't hold a runtime-variable number
+of distinct coin types — you can't put `TreasuryCap<Spain>` and
+`TreasuryCap<France>` in one `vector`. So instead of naming the outcome types
+on the struct, **each outcome's `TreasuryCap` is stored as a dynamic field
+keyed by index**. Every `buy` / `redeem` call names only the *one* coin type
+it touches, so the arity limit never bites and `N` is free.
+
+## The two layers
+
+A multi-outcome market has two independent layers. You can use just the first,
+or both.
+
+### Layer 1 — tokenized parimutuel (needs **no DEEP**)
+
+You stake `Q` (SUI) on a single outcome and receive that outcome's token
+**1:1**. The token is a real, transferable `Coin`. The market's **vault**
+accumulates every stake. After the admin resolves to the winning index, each
+winning token redeems for a **pro-rata share of the entire pool**:
+
+```
+payout = amount * vault / winning_supply
+```
+
+That ratio is invariant under redemption, so every winning token is worth
+exactly `vault₀ / supply₀` and the vault drains to (near) zero. Losing tokens
+are worthless. This layer is pure coin minting plus a balance vault — no
+DeepBook, no DEEP.
+
+<Callout type="info">
+  **Invariant proof sketch.** After one redemption of `a` tokens:
+  `V₁ = V₀ − a·V₀/S₀` and `S₁ = S₀ − a`, so
+  `V₁/S₁ = V₀(1 − a/S₀) / (S₀ − a) = V₀/S₀`. The price-per-token is preserved,
+  so redemption order doesn't matter.
+</Callout>
+
+### Layer 2 — DeepBook order book per outcome (needs **DEEP**)
+
+Optionally, each outcome gets its own **DeepBook V3 pool** (base = that
+outcome's token, quote = SUI). The token then trades on a live central limit
+order book, and its price (SUI per token, 0–1) is the market's continuously
+updated implied probability. Opening pools costs **500 DEEP each** — a 4-team
+market with order books is `4 × 500 = 2000 DEEP`.
+
+## Creating a market
+
+<Steps>
+
+### Choose outcomes & options
+
+Question, 2–64 outcome names, resolution date, optional oracle address, and a
+checkbox: **Enable DeepBook order-book trading** (adds `N × 500 DEEP`).
+
+### Compile per-outcome token modules
+
+The indexer's `/api/compile-outcome-market` endpoint generates one
+one-time-witness `Coin` module per outcome (`outcome_0 … outcome_{N-1}`,
+witnesses `OUTCOME_0 …`), each 9-decimal, and compiles them to bytecode
+(`sui move build --dump-bytecode-as-base64`, run in WSL).
+
+### Publish the token package
+
+The frontend publishes the compiled modules in one tx and harvests the package
+id + each outcome's `TreasuryCap` (matched back to its index by the
+`::outcome_{i}::OUTCOME_{i}` type tag).
+
+### (Optional) Open DeepBook pools
+
+If order books are enabled, one tx opens `N` permissionless pools
+(`pool::create_permissionless_pool<OUTCOME_i, SUI>`), paying 500 DEEP each, and
+extracts the pool id per outcome.
+
+### Create + register + share (one PTB)
+
+A single programmable transaction threads the market object through three
+phases:
+
+```
+create_market<SUI>(question, names, n, resolution_time, oracle, token_pkg)
+  → add_outcome<SUI, OUTCOME_i>(market, i, treasury_i, pool_i)   ×N
+  → share_market<SUI>(market)
+```
+
+`create_market` returns an **unsealed** object; `add_outcome` must be called in
+index order (0, 1, 2 …); `share_market` asserts all `N` are registered, seals
+it, emits `OutcomeMarketCreated`, and shares it.
+
+</Steps>
+
+## Trading
+
+On the market page (`/outcome/:id`) the right-hand ticket has two modes for the
+selected outcome.
+
+### Stake (parimutuel mint)
+
+Enter a SUI amount → **Stake**. Mints that outcome's token 1:1 into the shared
+pool. No DEEP, no order book required. This is always available.
+
+### Limit ◆ (order book)
+
+Available only for outcomes that have a pool. Posts a resting limit order:
+
+- **Bid (buy):** deposits `price × qty` SUI as collateral.
+- **Ask (sell):** deposits `qty` outcome tokens as collateral (you must hold
+  them — stake first).
+
+Three one-time / occasional helpers sit alongside it:
+
+- **Enable trading** — creates your DeepBook `BalanceManager` (once per wallet)
+  and seeds the DEEP/SUI price reference on the live pools.
+- **Sync DEEP price** — re-imports the DEEP/SUI rate onto the selected pool.
+  Required once per outcome before its first order (see the gotcha below).
+- **Claim filled balances** — sweeps settled proceeds (bought tokens / sold
+  SUI) out of your `BalanceManager` back to your wallet after a fill.
+
+<Callout type="warning">
+  **`ENoDataPoints` (abort code 2 in `calculate_order_deep_price`).**
+  Permissionless pools launch with no DEEP price reference, so the *first*
+  order on a pool aborts. Click **Sync DEEP price** once per outcome before
+  trading it. (Staking doesn't need it — only order-book calls do.)
+</Callout>
+
+<Callout type="info">
+  DeepBook V3 requires `pay_with_deep = true` on non-whitelisted pools, so each
+  order deposits a small DEEP fee buffer. Quantities are floored to the pool's
+  lot size (`1,000,000` raw = 0.001 token).
+</Callout>
+
+## Pricing & probability
+
+Each outcome token settles at **exactly 1 SUI if it wins, 0 if it loses**, so
+its fair value is:
+
+```
+price = P(win) × 1 + P(lose) × 0 = P(win)
+```
+
+That's why **the price in cents *is* the probability in percent** — `50¢ = 50%`.
+No rational trader pays more than 1 SUI for something that pays at most 1 SUI,
+so price naturally stays in **0–100¢ = 0–100%**. The limit-order form also
+hard-rejects any price `≥ 1`, so you can't post above 100¢.
+
+The UI shows each outcome's **headline %** using, in priority order: the **live
+order-book mid** → the **last traded price** → the **parimutuel stake share**.
+After a trade fully matches, the book is empty again, so the row falls back to
+the last fill price (not back to the stake share).
+
+**Two signals, shown together.** When the headline comes from the order book /
+last trade, the row also shows a smaller **"N% staked"** with an info icon —
+that's the outcome's share of the parimutuel pool. The two can differ: the
+order book reflects current trading sentiment, while the bar / "SUI staked" and
+the final payout are based on your pro-rata share of the whole pool. Example:
+Spain can show a **43%** headline (order-book mid of a 35¢/50¢ book) while
+having **66.7%** of the staked pool.
+
+<Callout type="warning">
+  **Two nuances.**
+
+  1. **Outcomes don't auto-sum to 100%.** Each outcome has its *own
+  independent* DeepBook pool, so the prices are independent and won't perfectly
+  add up. A true linked market (à la Polymarket) needs a shared AMM/collateral
+  model.
+
+  2. **Redemption is parimutuel, not a fixed $1.** A winning token actually
+  redeems for `vault ÷ winning_supply` — its share of the *whole* pool — which
+  can be more or less than 1 SUI depending on how much was staked on losers. So
+  "price = probability" is the clean order-book interpretation; the final payout
+  is pool-share-based.
+</Callout>
+
+## Resolution
+
+Sports/discrete outcomes have no price oracle, so resolution is by the protocol
+**`AdminCap`** (the same single cap that resolves binary markets — there is no
+per-market creator stored on-chain). The admin calls:
+
+```
+resolve<Q>(admin: &AdminCap, market: &mut OutcomeMarket<Q>, winner: u8, ctx)
+```
+
+In the UI the **Win** button next to each outcome (admin-only) does this.
+
+<Callout type="warning">
+  **Resolving does not touch the order book.** The DeepBook pools and any
+  resting orders are separate objects — resolution only flips the market's
+  status. Open orders stay on the book with their collateral locked, and become
+  mispriced arb-bait (e.g. a stale YES ask at 60¢ when YES won lets anyone buy
+  at 0.60 and redeem for 1.00). **Cancel open orders before resolving**
+  (trade sidebar → Advanced → Cancel my open orders, per pool).
+</Callout>
+
+## Redemption
+
+After resolution, holders of the winning outcome's token call:
+
+```
+redeem<Q, T>(market: &mut OutcomeMarket<Q>, idx: u8, token: Coin<T>, ctx)
+```
+
+The token is burned and the caller receives `amount × vault / winning_supply`
+SUI. The UI's **Redeem winning tokens** button merges all of the caller's
+winning-type coins and redeems them in one call.
+
+## Contract reference (`outcome_market`)
+
+| Function | Purpose |
+|---|---|
+| `create_market<Q>(question, names, n, resolution_time, oracle, token_pkg, ctx) → OutcomeMarket<Q>` | Phase 1 — unsealed market. |
+| `add_outcome<Q, T>(market, idx, treasury, pool_addr)` | Phase 2 — attach outcome `idx`'s `TreasuryCap` + pool id (sequential). |
+| `share_market<Q>(market)` | Phase 3 — seal, emit, share. |
+| `buy<Q, T>(market, idx, payment, ctx)` | Stake `Q` on outcome `idx`; mint that token 1:1. |
+| `resolve<Q>(admin, market, winner, ctx)` | AdminCap-gated; set the winning index. |
+| `redeem<Q, T>(market, idx, token, ctx)` | Burn a winning token for its pro-rata pool share. |
+| Views | `status`, `outcome_count`, `is_ready`, `winner`, `vault_value`, `total_staked`, `pools`, `outcome_names`. |
+
+Events: `OutcomeMarketCreated`, `OutcomeBought`, `OutcomeResolved`,
+`OutcomeRedeemed`.
+
+<Callout type="info">
+  Outcome markets are **standalone shared objects** — they are *not* in the
+  `market_factory` registry and *not* indexed by the Rust indexer. The frontend
+  discovers them client-side from `OutcomeMarketCreated` events, and reads order
+  books / fills directly from DeepBook via `devInspect` and `queryEvents`.
+</Callout>
+
+## Frontend map
+
+| Piece | File |
+|---|---|
+| Create modal | `components/CreateOutcomeMarketModal.tsx` |
+| Market page (list, chart, order book, activity, ticket) | `components/OutcomeMarketDetailPage.tsx` |
+| List card with live chances | `components/OutcomeMarketCard.tsx` |
+| Probability chart (multi-line) | `components/OutcomeProbChart.tsx` |
+| Object reads + tx builders (buy/resolve/redeem) | `lib/outcome.ts` |
+| DeepBook helpers (enable, limit order, sync, claim, fills) | `lib/outcomeTrade.ts` |
+| Token-module generator | `indexer/src/builder.rs` (`build_outcome_market_package`) |
+
+## Related
+
+- [Spot YES/NO Markets](/products/spot-markets) — the binary case
+- [Deployed Contracts](/reference/contracts) — package and object ids

@@ -1018,6 +1018,171 @@ body {
   border-color: var(--border-strong);
 }
 
+/* ─── Multi-outcome market detail ─── */
+/* content-area puts a 16px gap between every child; this page has many header
+   rows, so the gaps stacked up and pushed the tab strip below the fold. Tighten
+   it for this page so the tabs sit higher. */
+.content-area.om-detail { gap: 6px; padding-top: 14px; }
+
+/* This page flows in the app's outer scroll instead of an inner fixed-height
+   panel — so the tabs / content are never hidden below an inner fold. */
+.main-layout.om-layout { height: auto; min-height: 0; overflow: visible; }
+.main-layout.om-layout .content-area.om-detail { overflow-y: visible; }
+
+/* ─── Multi-outcome market list (Polymarket-style rows) ─── */
+.om-tabs {
+  display: flex;
+  flex-wrap: wrap;             /* 4 tabs wrap on a narrow phone instead of clipping */
+  gap: 4px 22px;
+  border-bottom: 1px solid var(--border-dim);
+  margin-bottom: 4px;
+}
+.om-tab {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 10px 2px;
+  font-family: inherit;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  cursor: pointer;
+  margin-bottom: -1px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+@media (max-width: 640px) {
+  .om-tabs { gap: 16px; }
+  .om-tab { font-size: 0.82rem; }
+  .om-act-head, .om-act-row { grid-template-columns: 1.3fr 0.7fr 0.7fr 0.9fr; gap: 6px; font-size: 0.78rem; }
+}
+.om-tab.active { color: var(--text-primary); border-bottom-color: var(--blue); }
+.om-activity { display: flex; flex-direction: column; }
+.om-act-head {
+  display: grid;
+  grid-template-columns: 1.4fr 0.8fr 0.8fr 1fr;
+  gap: 10px;
+  padding: 10px 4px;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border-dim);
+}
+.om-act-row {
+  display: grid;
+  grid-template-columns: 1.4fr 0.8fr 0.8fr 1fr;
+  gap: 10px;
+  padding: 11px 4px;
+  font-size: 0.85rem;
+  color: var(--text-primary);
+  text-decoration: none;
+  border-bottom: 1px solid var(--border-dim);
+  font-variant-numeric: tabular-nums;
+}
+.om-act-row:hover { background: var(--bg-hover, rgba(255,255,255,0.025)); }
+.om-list {
+  display: flex;
+  flex-direction: column;
+}
+.om-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  grid-template-rows: auto auto;
+  align-items: center;
+  column-gap: 14px;
+  row-gap: 8px;
+  padding: 14px 4px;
+  border-bottom: 1px solid var(--border-dim);
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.om-row:hover { background: var(--bg-hover, rgba(255,255,255,0.025)); }
+.om-row-selected {
+  background: var(--yes-dim);
+  border-radius: 8px;
+  border-bottom-color: transparent;
+}
+.om-row-main {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+.om-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: inline-block;
+}
+.om-row-name { min-width: 0; }
+.om-row-name > div:first-child {
+  font-size: 1rem;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.om-row-sub {
+  font-size: 0.74rem;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+.om-row-pct {
+  font-size: 1.25rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+.om-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.om-buy-btn {
+  border: none;
+  border-radius: 8px;
+  padding: 9px 18px;
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 800;
+  cursor: pointer;
+  color: var(--yes, #22c55e);
+  background: var(--yes-dim);
+  transition: background 0.15s ease, transform 0.1s ease;
+  white-space: nowrap;
+}
+.om-buy-btn:hover { filter: brightness(1.15); transform: translateY(-1px); }
+.om-win-btn {
+  border: 1px solid var(--border-base);
+  background: transparent;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-family: inherit;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.om-win-btn:hover:not(:disabled) { border-color: var(--border-strong); color: var(--text-primary); }
+.om-row-bar {
+  grid-column: 1 / -1;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--bg-input);
+  overflow: hidden;
+}
+.om-row-bar > div {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+@media (max-width: 640px) {
+  .om-row { grid-template-columns: 1fr auto; }
+  .om-row-actions { grid-column: 1 / -1; justify-content: flex-start; }
+}
+
 .market-card-tag {
   align-self: flex-start;
   font-size: 0.65rem;

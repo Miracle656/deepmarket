@@ -4,36 +4,63 @@ import { Callout } from 'nextra/components'
 
 All ids below are on **Sui testnet**. Mainnet redeploy is planned.
 
-## DeepMarket contract (v3 — current)
+## DeepMarket contract (v4 — current)
 
 The DeepMarket Move package. Includes `market_factory`, `yes_token`,
-`no_token`, and `agent_cap`.
+`no_token`, `agent_cap`, and `outcome_market`.
 
 | | |
 |---|---|
-| **Package v3** | `0x50a58add3954967d6c6480469b9fa78f3f7bb21fed9cda88323cdf7a87771c29` |
-| **Modules** | `agent_cap`, `market_factory`, `no_token`, `yes_token` |
-| **MarketRegistry** (shared) | `0x7e1eee1313ff5f27da5230372eb4560bad4e946bda06878134995203d489eb1d` |
-| **AdminCap** | `0x7ee52b8cf3402349b6f65a8d98f9231cf1d3e0366f333c7408bfe3a3cda1450c` |
+| **Package v4** | `0x8c02107957d0190d6faa05e6299991b6693e11583a3361c1b8be4ae3ef4ba190` |
+| **Modules** | `agent_cap`, `market_factory`, `no_token`, `outcome_market`, `yes_token` |
+| **MarketRegistry** (shared, binary markets) | `0x7e1eee1313ff5f27da5230372eb4560bad4e946bda06878134995203d489eb1d` |
+| **AdminCap** (resolves both binary & multi-outcome) | `0x7ee52b8cf3402349b6f65a8d98f9231cf1d3e0366f333c7408bfe3a3cda1450c` |
 | **UpgradeCap** | `0xbe6b8bcd0ae60eb084427a4095aef779cc0ec1697bf924565fc13328046c541c` |
 | **YES TreasuryCap** | `0x447cda39c466b249b132948a8970435a345997a5e514f3235d560472b72438c9` |
 | **NO TreasuryCap** | `0x205c400b5ca31512027e6f8d0b4fce1fe812cdf06b8cc85ac31e34fefaeb0f57` |
 
+Multi-outcome markets are standalone shared objects (no registry); discover
+them from `OutcomeMarketCreated` events. See
+[Multi-Outcome Markets](/products/multi-outcome-markets).
+
 ## Upgrade chain
 
-Each upgrade's ticket references the immediately-prior package id. Type
-identity sticks with the version where a module was first published.
+Each upgrade's ticket references the immediately-prior package id. **Type
+identity sticks with the package's *original* id (v1, `0x6d968a48…`)** — that's
+the address you'll see on `AdminCap`, `OutcomeMarket`, etc. when you query a
+function's normalized signature, regardless of the version you call.
 
 | Version | Package ID | Notes |
 |---|---|---|
-| v1 (2026-03-12) | `0x6d968a4810498a16f18beca840667350ed5aafc119c3d8cbd3033676b622c774` | Original publish. `market_factory`, `yes_token`, `no_token`. |
-| v2 (2026-05-13) | `0xf2189af211ace44b5365d3c0cb8a8b96137897957fa53b7f83570db0f1f10068` | Added `agent_cap` module. **Type origin for agent_cap lives here.** |
-| v3 (2026-05-14) | `0x50a58add3954967d6c6480469b9fa78f3f7bb21fed9cda88323cdf7a87771c29` | `agent_cap::create` switched to `transfer::share_object` so the agent can reference the cap. |
+| v1 (2026-03-12) | `0x6d968a4810498a16f18beca840667350ed5aafc119c3d8cbd3033676b622c774` | Original publish. `market_factory`, `yes_token`, `no_token`. **Type origin for all original modules — `AdminCap` is `0x6d968a48…::market_factory::AdminCap`.** |
+| v2 (2026-05-13) | `0xf2189af211ace44b5365d3c0cb8a8b96137897957fa53b7f83570db0f1f10068` | Added `agent_cap`. |
+| v3 (2026-05-14) | `0x50a58add3954967d6c6480469b9fa78f3f7bb21fed9cda88323cdf7a87771c29` | `agent_cap::create` → `transfer::share_object`. |
+| v4 (2026-06-12) | `0x8c02107957d0190d6faa05e6299991b6693e11583a3361c1b8be4ae3ef4ba190` | Added `outcome_market` (any-N tokenized parimutuel + optional DeepBook pools). |
+
+### Upgrading with the current CLI (1.72.1)
+
+The toolchain that shipped this build changed how publish addresses are
+tracked, and is older than current testnet — three gotchas:
 
 <Callout type="warning">
-  Before each upgrade, bump `published-at` in `Move.toml` to the **latest**
-  package id. Otherwise `sui client upgrade` errors with
-  `PackageIDDoesNotMatch`.
+  1. **`Published.toml`, not `published-at`.** This CLI tracks publish
+  addresses in a separate `Published.toml` (`[published.testnet]` with
+  `chain-id`, `published-at` = latest, `original-id`, `version`,
+  `upgrade-capability`). There is **no `sui move manage-package`** subcommand
+  in this build — seed `Published.toml` by hand. Remove any `published-at` from
+  `Move.toml` (keeping both causes a "conflicting addresses" error).
+
+  2. **CLI protocol < network → dry-run panics.** The local binary is protocol
+  v124 while testnet is v126, so `--tx-digest` and the local compatibility
+  check **panic**. Pass an explicit `--gas-budget` (skips the gas dry-run) and
+  `--skip-verify-compatibility` (skips the local check; validators still
+  enforce compatibility on-chain). A plain `publish` works without flags.
+
+  3. **Type origin ≠ `original-id` in `Published.toml`.** The v4 upgrade was
+  seeded with `original-id = 0xf2189af2…`, but the CLI resolves the true type
+  origin (`0x6d968a48…`) from the on-chain package lineage via the UpgradeCap.
+  So look up `AdminCap` / find owned caps by the **`0x6d968a48…`** type, not
+  `CONFIG.PACKAGE_ID`.
 </Callout>
 
 ## DeepBook V3 (Mysten — testnet)
@@ -100,6 +127,7 @@ the next ping.
 
 ```
 VITE_PACKAGE_ID=0x50a58add3954967d6c6480469b9fa78f3f7bb21fed9cda88323cdf7a87771c29
+VITE_OUTCOME_PACKAGE_ID=0x8c02107957d0190d6faa05e6299991b6693e11583a3361c1b8be4ae3ef4ba190
 VITE_MARKET_REGISTRY=0x7e1eee1313ff5f27da5230372eb4560bad4e946bda06878134995203d489eb1d
 VITE_ADMIN_CAP_ID=0x7ee52b8cf3402349b6f65a8d98f9231cf1d3e0366f333c7408bfe3a3cda1450c
 VITE_UPGRADE_CAP=0xbe6b8bcd0ae60eb084427a4095aef779cc0ec1697bf924565fc13328046c541c

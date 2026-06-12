@@ -1,6 +1,14 @@
 // All on-chain IDs come from env vars injected by Vite.
 export const CONFIG = {
     PACKAGE_ID: import.meta.env.VITE_PACKAGE_ID as string,
+    // Latest deepmarket_contract package version (v4) — the one that contains
+    // the `outcome_market` module (multi-outcome / any-N parimutuel markets).
+    // Move calls into a NEW module must target the latest package id, so this
+    // is separate from PACKAGE_ID (older binary-market flows still work at the
+    // version they were registered under). Override per-deploy via env.
+    OUTCOME_PACKAGE_ID:
+        (import.meta.env.VITE_OUTCOME_PACKAGE_ID as string | undefined) ??
+        '0x8c02107957d0190d6faa05e6299991b6693e11583a3361c1b8be4ae3ef4ba190',
     YES_TREASURY_CAP: import.meta.env.VITE_YES_TREASURY_CAP as string,
     NO_TREASURY_CAP: import.meta.env.VITE_NO_TREASURY_CAP as string,
     UPGRADE_CAP: import.meta.env.VITE_UPGRADE_CAP as string,

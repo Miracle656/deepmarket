@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useCurrentAccount, useSuiClient } from '@mysten/dapp-kit';
 import { ArrowLeft, LineChart, MessageCircle, BookOpen, History } from 'lucide-react';
-import type { Market } from '../lib/config';
+import { CONFIG, type Market } from '../lib/config';
 import { INDEXER_URL } from '../lib/api';
 import TvChart from './TvChart';
 import TradeSidebar from './TradeSidebar';
@@ -29,11 +30,31 @@ interface PricePoint {
 export default function MarketDetailPage({ markets, theme, onResolve }: Props) {
     const { marketId } = useParams<{ marketId: string }>();
     const navigate = useNavigate();
+    const acct = useCurrentAccount();
+    const suiClient = useSuiClient();
 
     const market = markets.find(m => m.objectId === marketId);
     const [priceHistory, setPriceHistory] = useState<PricePoint[]>([]);
     const [showMint, setShowMint] = useState(false);
     const [activeTab, setActiveTab] = useState<'chart' | 'book' | 'trades' | 'chat'>('chart');
+    const [isAdmin, setIsAdmin] = useState(false);
+
+    // Resolution is gated by the protocol AdminCap (one cap resolves all
+    // markets). Only show Resolve to the wallet that owns it.
+    useEffect(() => {
+        if (!acct) { setIsAdmin(false); return; }
+        let cancelled = false;
+        suiClient
+            .getObject({ id: CONFIG.ADMIN_CAP_OBJECT_ID, options: { showOwner: true } })
+            .then(res => {
+                const owner = res.data?.owner;
+                const addr = owner && typeof owner === 'object' && 'AddressOwner' in owner
+                    ? (owner as { AddressOwner: string }).AddressOwner : null;
+                if (!cancelled) setIsAdmin(addr === acct.address);
+            })
+            .catch(() => { if (!cancelled) setIsAdmin(false); });
+        return () => { cancelled = true; };
+    }, [acct, suiClient]);
 
     useEffect(() => {
         if (!market) return;
@@ -88,9 +109,11 @@ export default function MarketDetailPage({ markets, theme, onResolve }: Props) {
                                     <button className="btn btn-yes btn-sm" onClick={() => setShowMint(true)}>
                                         Mint Tokens
                                     </button>
-                                    <button className="btn btn-ghost btn-sm" onClick={() => onResolve(market)}>
-                                        Resolve
-                                    </button>
+                                    {isAdmin && (
+                                        <button className="btn btn-ghost btn-sm" onClick={() => onResolve(market)}>
+                                            Resolve
+                                        </button>
+                                    )}
                                 </>
                             )}
                         </div>

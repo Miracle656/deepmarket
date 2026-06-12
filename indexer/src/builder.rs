@@ -32,6 +32,94 @@ fn sanitize_name(name: &str) -> String {
     safe
 }
 
+/// Derive a short, uppercase, alphanumeric coin symbol from a display name.
+/// e.g. "Argentina" -> "ARGEN", "Côte d'Ivoire" -> "CTEDI".
+fn symbol_from_name(name: &str) -> String {
+    let mut s: String = name
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric())
+        .map(|c| c.to_ascii_uppercase())
+        .collect();
+    if s.is_empty() {
+        s = "OUTCOME".to_string();
+    }
+    s.chars().take(8).collect()
+}
+
+/// Build a per-market token package for a multi-outcome market: one OTW coin
+/// module per outcome (`outcome_0 … outcome_{n-1}`, witness `OUTCOME_0` …),
+/// each a 9-decimal `Coin`. The frontend publishes the result, takes the N
+/// `TreasuryCap`s + package id, optionally opens a DeepBook pool per outcome,
+/// then calls `outcome_market::create_market` + `add_outcome` ×N + `share`.
+pub async fn build_outcome_market_package(
+    market_name: &str,
+    outcomes: &[String],
+) -> anyhow::Result<CompileResult> {
+    if outcomes.len() < 2 {
+        anyhow::bail!("a multi-outcome market needs at least 2 outcomes");
+    }
+    if outcomes.len() > 64 {
+        anyhow::bail!("too many outcomes (max 64)");
+    }
+
+    let safe_name = sanitize_name(market_name);
+
+    let temp_dir = std::env::temp_dir().join(format!("deepmarket_om_{}", safe_name));
+    if temp_dir.exists() {
+        fs::remove_dir_all(&temp_dir)?;
+    }
+    fs::create_dir_all(temp_dir.join("sources"))?;
+
+    let move_toml = format!(
+        r#"[package]
+name = "{safe_name}"
+version = "0.0.1"
+edition = "2024.beta"
+
+[dependencies]
+Sui = {{ git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-framework", rev = "testnet-v1.72.1" }}
+
+[addresses]
+{safe_name} = "0x0"
+"#
+    );
+    tfs::write(temp_dir.join("Move.toml"), move_toml).await?;
+
+    // One OTW coin module per outcome. The witness type must be the module
+    // name uppercased (Sui one-time-witness convention).
+    for (i, outcome) in outcomes.iter().enumerate() {
+        let module = format!("outcome_{i}");
+        let witness = format!("OUTCOME_{i}");
+        let symbol = symbol_from_name(outcome);
+        // Escape any embedded quotes/backslashes in the display name for the
+        // Move byte-string literal.
+        let display = outcome.replace('\\', "").replace('"', "");
+        let code = format!(
+            r#"module {safe_name}::{module} {{
+    use sui::coin;
+    use std::option;
+
+    public struct {witness} has drop {{}}
+
+    #[allow(deprecated_usage)]
+    fun init(otw: {witness}, ctx: &mut sui::tx_context::TxContext) {{
+        let (treasury, metadata) = coin::create_currency(otw, 9, b"{symbol}", b"{display}", b"", option::none(), ctx);
+        sui::transfer::public_freeze_object(metadata);
+        sui::transfer::public_transfer(treasury, sui::tx_context::sender(ctx));
+    }}
+}}
+"#
+        );
+        tfs::write(
+            temp_dir.join("sources").join(format!("{module}.move")),
+            code,
+        )
+        .await?;
+    }
+
+    compile_dir(&temp_dir).await
+}
+
 pub async fn build_market_package(market_name: &str) -> anyhow::Result<CompileResult> {
     let safe_name = sanitize_name(market_name);
 
@@ -61,6 +149,22 @@ Sui = {{ git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-fra
     );
     tfs::write(temp_dir.join("Move.toml"), move_toml).await?;
 
+    // Per-market coin display names so the *wallet* can tell one market's YES/NO
+    // token from another's. The Move struct/type is already unique per market
+    // (fresh package id), but every market used the same symbol "YES" / name
+    // "Yes Token", so Slush showed them all identically. We bake a short, safe
+    // slice of the question into the coin's display name (e.g. "YES · Will
+    // Arsenal win…"). Symbol stays short; only quotes/backslashes need escaping
+    // for the Move byte-string literal.
+    let label: String = market_name
+        .chars()
+        .take(28)
+        .collect::<String>()
+        .replace('\\', "")
+        .replace('"', "");
+    let yes_display = format!("YES · {label}");
+    let no_display = format!("NO · {label}");
+
     // 3. Write sources/yes_market.move and no_market.move
     let yes_code = format!(
         r#"module {safe_name}::yes_market {{
@@ -71,7 +175,7 @@ Sui = {{ git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-fra
 
     #[allow(deprecated_usage)]
     fun init(otw: YES_MARKET, ctx: &mut sui::tx_context::TxContext) {{
-        let (treasury, metadata) = coin::create_currency(otw, 9, b"YES", b"Yes Token", b"", option::none(), ctx);
+        let (treasury, metadata) = coin::create_currency(otw, 9, b"YES", b"{yes_display}", b"", option::none(), ctx);
         sui::transfer::public_freeze_object(metadata);
         sui::transfer::public_transfer(treasury, sui::tx_context::sender(ctx));
     }}
@@ -89,7 +193,7 @@ Sui = {{ git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-fra
 
     #[allow(deprecated_usage)]
     fun init(otw: NO_MARKET, ctx: &mut sui::tx_context::TxContext) {{
-        let (treasury, metadata) = coin::create_currency(otw, 9, b"NO", b"No Token", b"", option::none(), ctx);
+        let (treasury, metadata) = coin::create_currency(otw, 9, b"NO", b"{no_display}", b"", option::none(), ctx);
         sui::transfer::public_freeze_object(metadata);
         sui::transfer::public_transfer(treasury, sui::tx_context::sender(ctx));
     }}
@@ -98,16 +202,18 @@ Sui = {{ git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-fra
     );
     tfs::write(temp_dir.join("sources").join("no_market.move"), no_code).await?;
 
-    // 4. Run `sui move build --dump-bytecode-as-base64` via WSL.
-    //
-    // The configured / working Sui CLI lives inside WSL (e.g.
-    // ~/.local/bin/sui), so we invoke it through `wsl`. We deliberately
-    // route through `bash -lc "..."` (login shell) so that `~/.bashrc` /
-    // `~/.profile` is sourced and `~/.local/bin` ends up on PATH —
-    // otherwise `wsl --cd <path> sui ...` exits 127 ("sui: command not
-    // found") because the non-login shell skips the user's PATH setup.
-    //
-    // `--cd` accepts a Windows path; WSL translates it to /mnt/c/... for us.
+    compile_dir(&temp_dir).await
+}
+
+/// Run `sui move build --dump-bytecode-as-base64` on `temp_dir` via WSL and
+/// parse the emitted modules/dependencies.
+///
+/// The configured / working Sui CLI lives inside WSL (e.g. ~/.local/bin/sui),
+/// so we invoke it through `wsl` routed via `bash -lc "..."` (a login shell)
+/// so `~/.bashrc` / `~/.profile` is sourced and `~/.local/bin` ends up on PATH
+/// — otherwise `wsl --cd <path> sui ...` exits 127 ("sui: command not found").
+/// `--cd` accepts a Windows path; WSL translates it to /mnt/c/... for us.
+async fn compile_dir(temp_dir: &std::path::Path) -> anyhow::Result<CompileResult> {
     let temp_dir_str = temp_dir.to_string_lossy().to_string();
     let output = tokio::task::spawn_blocking(move || {
         Command::new("wsl")

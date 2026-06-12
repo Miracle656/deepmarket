@@ -19,21 +19,22 @@ export default function ResolveMarketModal({ market, onClose, onResolved }: Prop
     const [loading, setLoading] = useState(false);
     const [adminCapId, setAdminCapId] = useState<string | null>(null);
 
-    // Look up the AdminCap in the user's wallet
+    // Verify the connected wallet owns the AdminCap. We check the known
+    // AdminCap object directly rather than filtering by StructType — the cap's
+    // type is defined by the package's *original* id (e.g. 0x6d968a48…), which
+    // differs from CONFIG.PACKAGE_ID after upgrades, so a type filter on
+    // PACKAGE_ID silently matches nothing.
     useEffect(() => {
-        if (!acct) return;
-        const adminCapType = `${CONFIG.PACKAGE_ID}::market_factory::AdminCap`;
+        if (!acct) { setAdminCapId(null); return; }
         suiClient
-            .getOwnedObjects({
-                owner: acct.address,
-                filter: { StructType: adminCapType },
-                options: { showType: true },
-            })
+            .getObject({ id: CONFIG.ADMIN_CAP_OBJECT_ID, options: { showOwner: true } })
             .then(res => {
-                const found = res.data?.[0]?.data?.objectId ?? null;
-                setAdminCapId(found);
+                const owner = res.data?.owner;
+                const addr = owner && typeof owner === 'object' && 'AddressOwner' in owner
+                    ? (owner as { AddressOwner: string }).AddressOwner : null;
+                setAdminCapId(addr === acct.address ? CONFIG.ADMIN_CAP_OBJECT_ID : null);
             })
-            .catch(console.error);
+            .catch(() => setAdminCapId(null));
     }, [acct, suiClient]);
 
     const handleResolve = async () => {

@@ -79,6 +79,12 @@ module deepmarket_contract::market_factory {
         transfer::transfer(admin_cap, ctx.sender());
     }
 
+    #[test_only]
+    /// Mint an `AdminCap` for unit tests in this package (e.g. `outcome_market`).
+    public fun admin_cap_for_testing(ctx: &mut TxContext): AdminCap {
+        AdminCap { id: object::new(ctx) }
+    }
+
     // ─── Registry ──────────────────────────────────────────────────────────────
 
     public fun init_registry<Q>(ctx: &mut TxContext) {

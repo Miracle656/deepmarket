@@ -1,11 +1,15 @@
 import { useState, useEffect } from 'react';
 import { Routes, Route, Navigate, NavLink, useNavigate } from 'react-router-dom';
-import { ConnectButton, useCurrentAccount } from '@mysten/dapp-kit';
+import { ConnectButton, useCurrentAccount, useSuiClient } from '@mysten/dapp-kit';
 import { Menu, X, BarChart3, TrendingUp, Info, Wallet } from 'lucide-react';
 import { CONFIG, type Market } from './lib/config';
+import { fetchRecentOutcomeMarkets } from './lib/outcome';
 import { ToastProvider } from './lib/toast';
 import { useMarkets } from './lib/useMarkets';
 import CreateMarketModal from './components/CreateMarketModal';
+import CreateOutcomeMarketModal from './components/CreateOutcomeMarketModal';
+import OutcomeMarketDetailPage from './components/OutcomeMarketDetailPage';
+import OutcomeMarketCard from './components/OutcomeMarketCard';
 import ResolveMarketModal from './components/ResolveMarketModal';
 import MarketDetailPage from './components/MarketDetailPage';
 import LandingPage from './components/LandingPage';
@@ -46,10 +50,19 @@ function formatDate(ms: number) {
 function AppInner() {
   const navigate = useNavigate();
   const acct = useCurrentAccount();
+  const suiClient = useSuiClient();
   const { markets, isLoading, addMarket, resolveMarket } = useMarkets();
+
+  // Multi-outcome markets are standalone shared objects (not in the indexer),
+  // so we discover them client-side from their creation events.
+  const [outcomeMarkets, setOutcomeMarkets] = useState<{ objectId: string; question: string; n: number }[]>([]);
+  useEffect(() => {
+    fetchRecentOutcomeMarkets(suiClient).then(setOutcomeMarkets).catch(() => { });
+  }, [suiClient]);
 
   const [filter, setFilter] = useState<Filter>('All');
   const [showCreate, setShowCreate] = useState(false);
+  const [showCreateOutcome, setShowCreateOutcome] = useState(false);
   const [resolveTarget, setResolveTarget] = useState<Market | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   // Light mode is disabled in production — theme is hard-pinned to 'dark'.
@@ -207,7 +220,17 @@ function AppInner() {
             <span className="ticker-prob">{m.yesPrice}%</span>
           </div>
         ))}
-        <div style={{ marginLeft: 'auto', flexShrink: 0 }}>
+        <div style={{ marginLeft: 'auto', flexShrink: 0, display: 'flex', gap: 6 }}>
+          <button
+            className="btn btn-ghost btn-sm"
+            onClick={() => {
+              if (!acct) { alert('Connect wallet first'); return; }
+              setShowCreateOutcome(true);
+            }}
+            title="Create a market with any number of outcomes (e.g. World Cup winner)"
+          >
+            + Multi-Outcome
+          </button>
           <button
             className="btn btn-primary btn-sm"
             onClick={() => {
@@ -247,6 +270,25 @@ function AppInner() {
                     <div className="stat-cell-value" style={{ color: 'var(--blue)' }}>Sui Testnet</div>
                   </div>
                 </div>
+
+                {/* Multi-outcome markets (standalone shared objects) */}
+                {outcomeMarkets.length > 0 && (
+                  <div style={{ marginBottom: 28 }}>
+                    <div className="markets-header">
+                      <span className="markets-title">Multi-Outcome Markets</span>
+                    </div>
+                    <div className="market-grid">
+                      {outcomeMarkets.map(om => (
+                        <OutcomeMarketCard
+                          key={om.objectId}
+                          objectId={om.objectId}
+                          question={om.question}
+                          n={om.n}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 {/* Market list only — no selected detail here */}
                 <div>
@@ -364,6 +406,7 @@ function AppInner() {
               />
             } />
 
+            <Route path="/outcome/:marketId" element={<OutcomeMarketDetailPage />} />
             <Route path="/predict" element={<PredictPage />} />
             <Route path="/predict/:oracleId" element={<PredictDetailPage theme={theme} />} />
             <Route path="/vault" element={<VaultView />} />
@@ -388,6 +431,15 @@ function AppInner() {
             setShowCreate(false);
           }}
           onClose={() => setShowCreate(false)}
+        />
+      )}
+      {showCreateOutcome && (
+        <CreateOutcomeMarketModal
+          onCreated={(objectId) => {
+            setShowCreateOutcome(false);
+            if (objectId) navigate(`/outcome/${objectId}`);
+          }}
+          onClose={() => setShowCreateOutcome(false)}
         />
       )}
       {/* Mobile bottom navigation */}

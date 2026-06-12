@@ -42,6 +42,12 @@ pub struct CompileRequest {
     pub market_name: String,
 }
 
+#[derive(Deserialize)]
+pub struct OutcomeCompileRequest {
+    pub market_name: String,
+    pub outcomes: Vec<String>,
+}
+
 pub async fn build_router(db: DbStore, sui_rpc_url: String) -> Router {
     let shared_state = Arc::new(AppState { db, sui_rpc_url });
 
@@ -62,6 +68,7 @@ pub async fn build_router(db: DbStore, sui_rpc_url: String) -> Router {
         .route("/markets/:id/positions/:address", get(get_positions))
         .route("/markets/:id/history", get(get_price_history))
         .route("/api/compile-market", post(compile_market))
+        .route("/api/compile-outcome-market", post(compile_outcome_market))
         .with_state(shared_state)
         .layer(cors)
 }
@@ -75,13 +82,31 @@ async fn root() -> Json<serde_json::Value> {
             "GET  /markets/:id/orderbook",
             "GET  /markets/:id/positions/:address",
             "GET  /markets/:id/history",
-            "POST /api/compile-market"
+            "POST /api/compile-market",
+            "POST /api/compile-outcome-market"
         ]
     }))
 }
 
 async fn compile_market(Json(payload): Json<CompileRequest>) -> Json<serde_json::Value> {
     match crate::builder::build_market_package(&payload.market_name).await {
+        Ok(result) => Json(json!({
+            "success": true,
+            "modules": result.modules,
+            "dependencies": result.dependencies
+        })),
+        Err(e) => Json(json!({
+            "success": false,
+            "error": e.to_string()
+        })),
+    }
+}
+
+async fn compile_outcome_market(
+    Json(payload): Json<OutcomeCompileRequest>,
+) -> Json<serde_json::Value> {
+    match crate::builder::build_outcome_market_package(&payload.market_name, &payload.outcomes).await
+    {
         Ok(result) => Json(json!({
             "success": true,
             "modules": result.modules,

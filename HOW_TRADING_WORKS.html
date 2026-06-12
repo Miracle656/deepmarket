@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>DeepMarket — How Trading Works (Simple Words)</title>
+<style>
+  :root{
+    --bg:#0a1628; --panel:#0f1d33; --line:#1e3050; --blue:#1E6EF3;
+    --green:#22C55E; --red:#EF4444; --gold:#F59E0B; --text:#e8eefc; --muted:#8aa0c0;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:'Inter',system-ui,Segoe UI,Arial,sans-serif;line-height:1.7;}
+  .wrap{max-width:820px;margin:0 auto;padding:40px 22px 90px;}
+  h1{font-size:2rem;letter-spacing:-0.02em;margin:0 0 6px;}
+  h2{font-size:1.3rem;margin:42px 0 10px;border-bottom:1px solid var(--line);padding-bottom:8px;}
+  h3{font-size:1.05rem;margin:24px 0 6px;color:#fff;}
+  p,li{color:var(--text);}
+  .lead{color:var(--muted);font-size:1.05rem;margin-bottom:8px;}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin:14px 0;}
+  .tip{border-left:4px solid var(--blue);}
+  .warn{border-left:4px solid var(--gold);}
+  .good{border-left:4px solid var(--green);}
+  code{background:#0b1a30;border:1px solid var(--line);border-radius:6px;padding:1px 6px;font-size:0.9em;}
+  .pill{display:inline-block;padding:2px 10px;border-radius:999px;font-size:0.8rem;font-weight:700;}
+  .yes{background:rgba(34,197,94,.15);color:var(--green)}
+  .no{background:rgba(239,68,68,.15);color:var(--red)}
+  .blue{background:rgba(30,110,243,.15);color:var(--blue)}
+  table{width:100%;border-collapse:collapse;margin:14px 0;font-size:0.95rem;}
+  th,td{border:1px solid var(--line);padding:9px 11px;text-align:left;vertical-align:top;}
+  th{background:#0b1a30;color:var(--muted);font-weight:700;}
+  .toc a{color:var(--blue);text-decoration:none;display:block;padding:3px 0;}
+  .step{display:flex;gap:12px;margin:10px 0;}
+  .num{flex:0 0 28px;height:28px;border-radius:50%;background:var(--blue);color:#fff;font-weight:800;display:flex;align-items:center;justify-content:center;font-size:0.9rem;}
+  .em{font-size:1.4rem;margin-right:6px;}
+  hr{border:none;border-top:1px solid var(--line);margin:34px 0;}
+  .muted{color:var(--muted)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>🎯 How DeepMarket Trading Works</h1>
+<p class="lead">Explained like you're five. No finance words without a plain meaning next to them.</p>
+
+<div class="card tip">
+  <strong>The one big idea:</strong> A prediction market is a place where people <em>bet on what will happen</em>.
+  "Will Arsenal win?" "Who wins the World Cup?" You buy a little ticket for the answer you believe in.
+  If you're right, your ticket turns into money. If you're wrong, it's worth nothing.
+</div>
+
+<h2>Table of contents</h2>
+<div class="toc card">
+  <a href="#tickets">1. Tickets (tokens) — what you're actually buying</a>
+  <a href="#twokinds">2. Two kinds of markets: YES/NO vs Many-Choice</a>
+  <a href="#twoways">3. Two ways to get a ticket: Stake/Mint vs the Marketplace</a>
+  <a href="#price">4. Price = Chance (why 50¢ means 50%)</a>
+  <a href="#orderbook">5. The order book: bids, asks, and "filling"</a>
+  <a href="#words">6. The scary words, in plain English</a>
+  <a href="#do">7. Do a real trade with two friends (step by step)</a>
+  <a href="#end">8. When the market ends: resolve & redeem</a>
+</div>
+
+<h2 id="tickets">1. Tickets (tokens) 🎟️</h2>
+<p>When you bet on an answer, you get a <strong>token</strong>. A token is just a <em>ticket</em> that says
+"I picked this answer." It lives in your wallet (Slush).</p>
+<ul>
+  <li>If your answer <strong>wins</strong> → your ticket is worth money. You trade it in for coins.</li>
+  <li>If your answer <strong>loses</strong> → your ticket is worth nothing. 😢</li>
+</ul>
+<div class="card good">
+  Every market makes its <strong>own</strong> tickets. Market #4's "YES" ticket and market #7's "YES" ticket
+  are different things — even if they're both called YES. We now print the market's name on the ticket
+  (like <code>YES · Will Arsenal win…</code>) so your wallet shows which market it belongs to.
+</div>
+
+<h2 id="twokinds">2. Two kinds of markets</h2>
+<table>
+  <tr><th>YES / NO market</th><th>Many-Choice market (multi-outcome)</th></tr>
+  <tr>
+    <td>Only <strong>two</strong> answers. <span class="pill yes">YES</span> or <span class="pill no">NO</span>.<br>
+    "Will Arsenal win? Yes or No."</td>
+    <td><strong>Many</strong> answers, one ticket each.<br>
+    "Who wins the World Cup? Spain / France / England / Argentina."</td>
+  </tr>
+  <tr>
+    <td>Tickets named YES / NO.</td>
+    <td>Tickets named after each choice (SPAIN, FRANCE…). That's why you can tell which market it's from. 👍</td>
+  </tr>
+</table>
+
+<h2 id="twoways">3. Two ways to get a ticket</h2>
+
+<h3>Way A — Stake / Mint (buy a brand-new ticket from the market) 🏭</h3>
+<p>You give the market some <strong>SUI</strong> (the money), and it prints you a fresh ticket.</p>
+<ul>
+  <li><strong>Many-Choice market:</strong> the button is <strong>"Stake"</strong>. You stake SUI on Spain → you get Spain tickets. (That <em>is</em> the minting — there's no separate "Mint" button because you only ever get the <em>one</em> choice you picked.)</li>
+  <li><strong>YES/NO market:</strong> the button is <strong>"Mint Tokens"</strong>. You put in SUI and get <em>both</em> a YES <em>and</em> a NO ticket (a matched pair). You keep the side you believe and can sell the other.</li>
+</ul>
+<div class="card tip"><strong>Why the difference?</strong> In Many-Choice you back one horse, so you get one ticket.
+In YES/NO the two sides always add up to one whole, so minting gives you the whole set (one YES + one NO).</div>
+
+<h3>Way B — The Marketplace (buy a ticket from another person) 🤝</h3>
+<p>Instead of printing a new ticket, you can buy someone else's ticket, or sell yours. This happens on the
+<strong>order book</strong> (a list of offers). More on that below.</p>
+
+<h2 id="price">4. Price = Chance 🎲</h2>
+<p>A winning ticket is always worth exactly <strong>1 SUI</strong>. A losing ticket is worth <strong>0</strong>.
+So the price people pay for a ticket tells you how likely they think it is:</p>
+<ul>
+  <li><strong>50¢</strong> means the crowd thinks it's a <strong>50% chance</strong>.</li>
+  <li><strong>17¢</strong> means about a <strong>17% chance</strong>.</li>
+</ul>
+<div class="card warn">
+  A ticket can <strong>never cost more than 100¢ (1 SUI)</strong> — nobody pays more than $1 for something
+  that pays back at most $1. So the chance never goes above 100%. (Our app blocks any price of 1 or more.)
+</div>
+
+<h2 id="orderbook">5. The order book 📓</h2>
+<p>The order book is a table of <strong>offers waiting to happen</strong>. Two kinds of offers:</p>
+<table>
+  <tr><th>Word</th><th>Plain meaning</th></tr>
+  <tr><td><span class="pill green" style="background:rgba(34,197,94,.15);color:var(--green)">Bid</span></td>
+      <td>"I want to <strong>buy</strong> a ticket for this price." (a buyer waiting)</td></tr>
+  <tr><td><span class="pill no">Ask</span></td>
+      <td>"I want to <strong>sell</strong> my ticket for this price." (a seller waiting)</td></tr>
+  <tr><td>Resting order</td><td>An offer just sitting on the table, waiting for someone to take it.</td></tr>
+  <tr><td><strong>Fill</strong> an order</td><td>To <strong>take</strong> someone's waiting offer — the trade happens. ✅</td></tr>
+</table>
+<div class="card tip">
+  <strong>Limit vs Market — the two ways to make an offer:</strong><br>
+  • <strong>Limit</strong> = "Only at my price." It may <em>wait</em> on the table (this is how you <em>add</em> an offer / seed the book).<br>
+  • <strong>Market</strong> = "Right now, best price available." It <em>takes</em> a waiting offer immediately (this is how you <em>fill</em>).
+</div>
+<p class="muted">When a Bid and an Ask meet at the same price, they shake hands and disappear — that's a completed trade.
+After they're gone, the book can look empty again. That's normal.</p>
+
+<h2 id="words">6. The other scary words 🧸</h2>
+<table>
+  <tr><th>Word</th><th>What it really is</th></tr>
+  <tr><td>DEEP</td><td>A tiny coin used to pay the marketplace's small fee. Like a token for the arcade machine.</td></tr>
+  <tr><td>BalanceManager</td><td>Your personal <strong>locker</strong> at the marketplace. Money/tickets for your offers sit in here.</td></tr>
+  <tr><td>Enable trading</td><td>Open your locker for the first time + tell this market how to charge the tiny fee. One-time.</td></tr>
+  <tr><td>Sync DEEP price</td><td>Wake up the fee-meter for one choice. Do it once before your <em>first</em> offer on that choice.</td></tr>
+  <tr><td>Claim filled balances</td><td>Take your winnings <strong>out of the locker</strong> and into your wallet, after an offer was taken.</td></tr>
+  <tr><td>Resolve</td><td>The referee says which answer won. Only the admin can do this.</td></tr>
+  <tr><td>Redeem</td><td>Trade your <strong>winning</strong> ticket in for real coins.</td></tr>
+</table>
+<div class="card">
+  <strong>Why is there "Claim" in Many-Choice but not in YES/NO?</strong><br>
+  In YES/NO, the quick "Buy/Sell" buttons use <em>Market</em> orders, which automatically empty your locker
+  back to your wallet — so there's nothing left to claim. In Many-Choice you place <em>Limit</em> offers that
+  wait, so after one is taken the winnings sit in your locker until you press <strong>Claim</strong>.
+  (Heads up: if you place a <em>limit</em> offer in a YES/NO market too, it also leaves money in the locker —
+  that's a small thing we can add a Claim button for there later.)
+</div>
+
+<h2 id="do">7. Do a real trade with two friends 👫</h2>
+<p>A trade needs <strong>two</strong> people: one selling, one buying. We use two accounts in your wallet
+(switch accounts in the Slush extension; the app follows whoever is selected).</p>
+
+<h3>Example: trade "Spain" on the World Cup market</h3>
+<div class="step"><div class="num">1</div><div><strong>Account A makes an offer (Limit).</strong> Pick Spain → <strong>Limit</strong> tab →
+ if it's your first time, press <strong>Sync DEEP price</strong> once → type a <strong>price</strong> (e.g. <code>0.40</code>, meaning 40¢)
+ and a <strong>quantity</strong> (e.g. <code>5</code> tickets) → press <strong>Bid (buy)</strong> or <strong>Ask (sell)</strong>.
+ <span class="muted">(To <em>sell</em>, you must own Spain tickets first — Stake some SUI on Spain to get them.)</span></div></div>
+<div class="step"><div class="num">2</div><div><strong>That offer now waits</strong> on the order book.</div></div>
+<div class="step"><div class="num">3</div><div><strong>Account B takes it (the opposite side).</strong> Switch to account B → pick Spain →
+ if A made a <em>Bid</em> at 40¢, B places an <em>Ask</em> at 40¢ (or lower); if A made an <em>Ask</em>, B places a <em>Bid</em>.
+ They meet → <strong>trade happens.</strong> ✅</div></div>
+<div class="step"><div class="num">4</div><div><strong>Both press "Claim filled balances"</strong> to move the results into their wallets.</div></div>
+
+<div class="card warn">
+  <strong>About "quantity":</strong> price is in <em>SUI per ticket</em> (0–1). Quantity is <em>how many tickets</em>.
+  So "price 0.40, quantity 5" = an offer about <strong>5 tickets at 40¢ each = 2 SUI total</strong>.
+</div>
+<div class="card tip">
+  <strong>"Am I staking from account 1?"</strong> You can use either account — they're just two people.
+  You only need to <em>stake</em> if you want to <strong>sell</strong> (you must own tickets to sell them).
+  To <strong>buy</strong> (a Bid), you just need SUI, no staking. For a quick demo: Account A stakes a little
+  and posts an <strong>Ask</strong>; Account B posts a <strong>Bid</strong> that matches it.
+</div>
+
+<h2 id="end">8. When the market ends 🏁</h2>
+<div class="step"><div class="num">1</div><div><strong>Cancel waiting offers first.</strong> Any offer still on the book gets stuck (its money stays
+ locked) and can be picked off unfairly once the winner is known. Cancel them to get your money back.</div></div>
+<div class="step"><div class="num">2</div><div><strong>Resolve.</strong> The admin presses <strong>Win</strong> on the correct answer (or YES/NO). The referee has spoken.</div></div>
+<div class="step"><div class="num">3</div><div><strong>Redeem.</strong> Everyone holding the <strong>winning</strong> ticket trades it in for SUI.
+ Losing tickets are worth nothing.</div></div>
+
+<div class="card good">
+  <strong>The whole journey in one line:</strong> Pick an answer → get a ticket (Stake/Mint or Buy) →
+  maybe trade it on the order book → wait for the result → if you won, Redeem for money. 🎉
+</div>
+
+<hr>
+<p class="muted">Made for the DeepMarket project. Open the app at <code>localhost:5173</code>, the full developer docs live in the
+<code>/docs</code> site (Products → Multi-Outcome Markets / Spot YES/NO Markets).</p>
+
+</div>
+</body>
+</html>

@@ -1,13 +1,16 @@
 [package]
 name = "deepmarket_contract"
 edition = "2024.beta" # edition = "legacy" to use legacy (pre-2024) Move
-published-at = "0xf2189af211ace44b5365d3c0cb8a8b96137897957fa53b7f83570db0f1f10068"
+# published-at is intentionally omitted: the published addresses are tracked
+# per-environment in Move.lock ([env.testnet]) via automated address management.
+# Keeping a published-at here while also tracked in the lock causes a
+# "conflicting addresses" error on upgrade.
 # license = ""           # e.g., "MIT", "GPL", "Apache 2.0"
 # authors = ["..."]      # e.g., ["Joe Smith (joesmith@noemail.com)", "John Snow (johnsnow@noemail.com)"]
 
 [dependencies]
-Sui = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-framework", rev = "testnet-v1.60.0" }
-DeepBook = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/deepbook", rev = "testnet-v1.60.0" }
+Sui = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-framework", rev = "testnet-v1.72.1" }
+DeepBook = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/deepbook", rev = "testnet-v1.72.1" }
 
 # For remote import, use the `{ git = "...", subdir = "...", rev = "..." }`.
 
