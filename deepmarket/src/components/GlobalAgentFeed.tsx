@@ -14,6 +14,7 @@ import {
     TrendingUp,
     TrendingDown,
     Pause,
+    Brain,
 } from 'lucide-react';
 import {
     getAllRecentDecisions,
@@ -24,6 +25,7 @@ import {
     getCachedTradeableOracles,
     type OracleSummary,
 } from '../lib/predict';
+import { CONFIG } from '../lib/config';
 
 const POLL_MS = 30_000;
 const FEED_LIMIT = 80;
@@ -66,6 +68,25 @@ export default function GlobalAgentFeed() {
     const [oracleMap, setOracleMap] = useState<Map<string, OracleSummary>>(new Map());
     const [error, setError] = useState<string | null>(null);
     const [busy, setBusy] = useState(false);
+    // MemWal memories (written by the bots' agents, independent of on-chain
+    // AgentCap authorization). Pulled from the bot's read-only proxy endpoint.
+    const [memories, setMemories] = useState<string[] | null>(null);
+
+    useEffect(() => {
+        let cancelled = false;
+        const loadMem = async () => {
+            try {
+                const res = await fetch(`${CONFIG.BOT_URL}/agent-memories?limit=40`);
+                const data = await res.json();
+                if (!cancelled) setMemories(Array.isArray(data.memories) ? data.memories : []);
+            } catch {
+                if (!cancelled) setMemories([]);
+            }
+        };
+        loadMem();
+        const id = setInterval(loadMem, POLL_MS);
+        return () => { cancelled = true; clearInterval(id); };
+    }, []);
 
     const load = useCallback(async () => {
         setBusy(true);
@@ -146,6 +167,52 @@ export default function GlobalAgentFeed() {
                 >
                     <RefreshCw size={14} className={busy ? 'spin' : ''} /> Refresh
                 </button>
+            </div>
+
+            {/* MemWal memories — the agents' narrative memory (Walrus-backed),
+                written every tick regardless of on-chain AgentCap auth. */}
+            <div style={{ marginTop: 8, marginBottom: 20 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                    <span style={{ fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                        <Brain size={15} /> Agent memories
+                    </span>
+                    <span className="vault-muted" style={{ fontSize: '0.78rem' }}>
+                        Walrus-backed (MemWal) · {memories?.length ?? 0}
+                    </span>
+                </div>
+                {memories === null && <div className="vs-empty">Loading agent memories…</div>}
+                {memories && memories.length === 0 && (
+                    <div className="vs-empty">
+                        No agent memories yet — start a bot strategy (and set MEMWAL creds on the bot)
+                        and its decisions will stream here.
+                    </div>
+                )}
+                {memories && memories.length > 0 && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        {memories.map((mem, i) => {
+                            const m = mem.match(/^\[([^\]]+)\]\s*(.*)$/);
+                            const when = m?.[1];
+                            const body = m?.[2] ?? mem;
+                            return (
+                                <div
+                                    key={i}
+                                    style={{
+                                        display: 'flex', gap: 10, padding: '10px 14px',
+                                        border: '1px solid var(--border-base)', borderRadius: 10,
+                                        fontSize: '0.85rem', lineHeight: 1.5,
+                                    }}
+                                >
+                                    {when && (
+                                        <span className="vault-muted" style={{ fontFamily: 'monospace', fontSize: '0.72rem', flexShrink: 0, whiteSpace: 'nowrap' }}>
+                                            {when}
+                                        </span>
+                                    )}
+                                    <span>{body}</span>
+                                </div>
+                            );
+                        })}
+                    </div>
+                )}
             </div>
 
             {/* Aggregate counts */}

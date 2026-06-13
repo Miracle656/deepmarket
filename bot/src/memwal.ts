@@ -63,6 +63,37 @@ export async function rememberText(text: string): Promise<void> {
     }
 }
 
+/**
+ * Best-effort "recent memories" pull for the public Agent feed. MemWal is a
+ * semantic store (no list-all), so we recall against a few broad queries and
+ * merge/dedupe. Independent of on-chain AgentCap authorization — the bots
+ * write these regardless, so the feed shows activity even with no AgentCap.
+ */
+export async function recentMemories(limit = 30): Promise<string[]> {
+    const c = getClient();
+    if (!c) return [];
+    const queries = [
+        'FIFA World Cup multi-outcome market making stake bid ask outcome',
+        'BTC binary option trade decision outcome win loss rationale',
+        'recent agent trade decision and reasoning',
+    ];
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const q of queries) {
+        if (out.length >= limit) break;
+        try {
+            const res = await c.recall(q, limit);
+            for (const r of res.results) {
+                if (r.text && !seen.has(r.text)) {
+                    seen.add(r.text);
+                    out.push(r.text);
+                }
+            }
+        } catch { /* ignore */ }
+    }
+    return out.slice(0, limit);
+}
+
 /** Generic semantic recall by free-text query (used by the FIFA strategy). */
 export async function recallText(
     query: string,

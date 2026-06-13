@@ -16,6 +16,12 @@ export const CONFIG = {
     ADMIN_CAP_OBJECT_ID: import.meta.env.VITE_ADMIN_CAP_ID as string,
     NETWORK: (import.meta.env.VITE_NETWORK ?? 'testnet') as 'testnet' | 'mainnet' | 'devnet',
 
+    // Telegram bot HTTP service (serves /agent-memories for the Agent tab).
+    // Defaults to the hosted Render instance; override via VITE_BOT_URL.
+    BOT_URL:
+        (import.meta.env.VITE_BOT_URL as string | undefined) ??
+        'https://deepmarketbot.onrender.com',
+
     // External docs site (Nextra). Override per-deploy via VITE_DOCS_URL.
     DOCS_URL:
         (import.meta.env.VITE_DOCS_URL as string | undefined) ??

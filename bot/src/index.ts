@@ -46,7 +46,7 @@ import { openTradePanel, registerTradePanel } from './trade-panel.js';
 import { handleChat, isChatAvailable } from './chat-agent.js';
 import { isAgentAvailable } from './agent.js';
 import { getMemory } from './memory.js';
-import { isMemWalAvailable, pingMemWal } from './memwal.js';
+import { isMemWalAvailable, pingMemWal, recentMemories } from './memwal.js';
 import {
     dusdcToUsd,
     findManagerByOwner,
@@ -959,6 +959,20 @@ async function main() {
                     ? `${webhookDomain}/telegram-webhook`
                     : null,
             });
+        });
+
+        // Public read of the agents' MemWal memories for the web Agent tab.
+        // The delegate key stays server-side; the browser just reads strings.
+        // CORS-open since it returns only public narrative memory text.
+        app.get('/agent-memories', async (req, res) => {
+            res.setHeader('Access-Control-Allow-Origin', '*');
+            try {
+                const limit = Math.min(50, Number(req.query.limit) || 30);
+                const memories = await recentMemories(limit);
+                res.json({ ok: true, enabled: isMemWalAvailable(), memories });
+            } catch (e) {
+                res.status(500).json({ error: e instanceof Error ? e.message : String(e) });
+            }
         });
 
         // Drive ONE strategy tick on demand. Point a cron (cron-job.org /
