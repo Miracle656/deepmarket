@@ -33,6 +33,44 @@ export function outcomeCoinType(pkgId: string, idx: number): string {
 export const OUTCOME_COLORS = ['#1E6EF3', '#22C55E', '#F59E0B', '#EF4444', '#A855F7', '#06B6D4', '#EC4899', '#84CC16'];
 export const colorForOutcome = (i: number) => OUTCOME_COLORS[i % OUTCOME_COLORS.length];
 
+// ── Client-side price-history snapshots ───────────────────────────────
+// Order-book fills are the only on-chain time series, so resting-order mid
+// moves (no trade) never show on the chart. To capture them we snapshot each
+// outcome's displayed % into localStorage on every refresh, building a coarse
+// per-browser history. (The durable cross-client fix is server-side indexing.)
+
+// v2 key: discards earlier history that mixed order-book mid with the
+// parimutuel fallback (caused a zig-zag line). We now only snapshot real
+// market prices.
+const snapKey = (marketId: string, idx: number) => `om_px2_${marketId}_${idx}`;
+
+/** Append a {ts, pct} point if it moved, or if the last point is >5m old. Caps at 500. */
+export function recordPriceSnapshot(marketId: string, idx: number, pct: number): void {
+    if (!marketId || !Number.isFinite(pct)) return;
+    try {
+        const key = snapKey(marketId, idx);
+        const arr: [number, number][] = JSON.parse(localStorage.getItem(key) || '[]');
+        const now = Math.floor(Date.now() / 1000);
+        const last = arr[arr.length - 1];
+        if (!last || last[1] !== pct || now - last[0] > 300) {
+            arr.push([now, pct]);
+            if (arr.length > 500) arr.splice(0, arr.length - 500);
+            localStorage.setItem(key, JSON.stringify(arr));
+        }
+    } catch { /* localStorage unavailable */ }
+}
+
+/** Read the recorded snapshots for an outcome as chart points. */
+export function loadPriceSnapshots(marketId: string, idx: number): { time: number; value: number }[] {
+    if (!marketId) return [];
+    try {
+        const arr: [number, number][] = JSON.parse(localStorage.getItem(snapKey(marketId, idx)) || '[]');
+        return arr.map(([t, v]) => ({ time: t, value: v }));
+    } catch {
+        return [];
+    }
+}
+
 function asBig(v: unknown): bigint {
     if (typeof v === 'string' || typeof v === 'number') return BigInt(v);
     return 0n;

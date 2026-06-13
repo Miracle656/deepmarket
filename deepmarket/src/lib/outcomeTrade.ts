@@ -7,6 +7,7 @@
 // limit-order tx, reusing the exact scaling/fee conventions proven out in
 // the binary-market TradeSidebar.
 import { Transaction } from '@mysten/sui/transactions';
+import { bcs } from '@mysten/sui/bcs';
 import { testnetPackageIds } from '@mysten/deepbook-v3';
 import type { SuiJsonRpcClient as SuiClient } from '@mysten/sui/jsonRpc';
 import { CONFIG } from './config';
@@ -14,6 +15,7 @@ import { CONFIG } from './config';
 const DEEPBOOK = testnetPackageIds.DEEPBOOK_PACKAGE_ID;
 const CLOCK = '0x6';
 const ZERO_RE = /^0x0+$/;
+const ZERO_ADDR = '0x0000000000000000000000000000000000000000000000000000000000000000';
 
 // DeepBook emits OrderFilled from its *implementation* package's order_info
 // module (distinct from the call-package id used for moveCall targets).
@@ -279,4 +281,76 @@ export async function buildClaimBalancesTx(
         tx.transferObjects([out], sender);
     }
     return tx;
+}
+
+/** Settled (idle) + locked-in-orders balances the wallet's BalanceManager holds. */
+export interface ManagerOutcomeState {
+    settled: Record<number, number>; // idle outcome tokens, per outcome idx
+    locked: Record<number, number>;  // outcome tokens locked in resting orders
+    suiLocked: number;               // SUI locked in resting bids (all pools)
+    suiSettled: number;              // idle SUI settled in the manager
+}
+
+/**
+ * Read what a wallet's DeepBook BalanceManager holds for a market's pools:
+ * settled (idle) and locked-in-open-orders outcome tokens per outcome, plus
+ * SUI. Lets the Portfolio surface value that isn't a wallet token yet
+ * (collateral backing resting orders / filled proceeds awaiting claim).
+ */
+export async function fetchManagerOutcomeState(
+    client: SuiClient,
+    managerId: string,
+    pools: string[],
+): Promise<ManagerOutcomeState> {
+    const out: ManagerOutcomeState = { settled: {}, locked: {}, suiLocked: 0, suiSettled: 0 };
+    if (!managerId) return out;
+    const readU64 = (rv: any, i: number): number => {
+        try { return Number(bcs.u64().parse(new Uint8Array(rv[i][0]))); } catch { return 0; }
+    };
+
+    // Idle SUI settled in the manager.
+    try {
+        const tx = new Transaction();
+        tx.moveCall({ target: `${DEEPBOOK}::balance_manager::balance`, typeArguments: [CONFIG.SUI_TYPE], arguments: [tx.object(managerId)] });
+        const r = await client.devInspectTransactionBlock({ sender: ZERO_ADDR, transactionBlock: tx });
+        if (r.effects?.status?.status === 'success') out.suiSettled = readU64(r.results?.[0]?.returnValues, 0) / 1e9;
+    } catch { /* ignore */ }
+
+    await Promise.all(pools.map(async (poolId, idx) => {
+        if (isZeroPool(poolId)) return;
+        const types = await poolTypesPublic(client, poolId);
+        if (!types) return;
+        // locked_balance(pool, manager) → (base, quote, deep) locked in open orders.
+        try {
+            const tx = new Transaction();
+            tx.moveCall({ target: `${DEEPBOOK}::pool::locked_balance`, typeArguments: [types.base, types.quote], arguments: [tx.object(poolId), tx.object(managerId)] });
+            const r = await client.devInspectTransactionBlock({ sender: ZERO_ADDR, transactionBlock: tx });
+            if (r.effects?.status?.status === 'success') {
+                const rv = r.results?.[0]?.returnValues;
+                out.locked[idx] = readU64(rv, 0) / 1e9;
+                out.suiLocked += readU64(rv, 1) / 1e9;
+            }
+        } catch { /* ignore */ }
+        // Settled (idle) base tokens in the manager.
+        try {
+            const tx = new Transaction();
+            tx.moveCall({ target: `${DEEPBOOK}::balance_manager::balance`, typeArguments: [types.base], arguments: [tx.object(managerId)] });
+            const r = await client.devInspectTransactionBlock({ sender: ZERO_ADDR, transactionBlock: tx });
+            if (r.effects?.status?.status === 'success') out.settled[idx] = readU64(r.results?.[0]?.returnValues, 0) / 1e9;
+        } catch { /* ignore */ }
+    }));
+
+    return out;
+}
+
+/** Pool base/quote types (exported variant for the manager-state reader). */
+async function poolTypesPublic(client: SuiClient, poolId: string): Promise<{ base: string; quote: string } | null> {
+    try {
+        const obj = await client.getObject({ id: poolId, options: { showType: true } });
+        const m = obj.data?.type?.match(/<(.+),\s*(.+)>/);
+        if (!m) return null;
+        return { base: m[1]!.trim(), quote: m[2]!.trim() };
+    } catch {
+        return null;
+    }
 }

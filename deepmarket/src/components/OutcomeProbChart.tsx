@@ -3,7 +3,7 @@ import {
     createChart,
     ColorType,
     LineStyle,
-    LineSeries,
+    AreaSeries,
     type UTCTimestamp,
 } from 'lightweight-charts';
 
@@ -11,6 +11,15 @@ export interface ChartSeries {
     name: string;
     color: string;
     data: { time: number; value: number }[]; // time in seconds, value 0–100
+}
+
+/** #rrggbb → rgba(r,g,b,a) for the faint area fill ("heatmap" tint). */
+function tint(hex: string, alpha: number): string {
+    const h = hex.replace('#', '');
+    const r = parseInt(h.slice(0, 2), 16);
+    const g = parseInt(h.slice(2, 4), 16);
+    const b = parseInt(h.slice(4, 6), 16);
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
 interface Props {
@@ -63,8 +72,11 @@ export default function OutcomeProbChart({ series }: Props) {
 
         for (const s of series) {
             if (s.data.length === 0) continue;
-            const line = chart.addSeries(LineSeries, {
-                color: s.color,
+            // Area series = line + a faint colour-matched fill (the "heatmap" tint).
+            const line = chart.addSeries(AreaSeries, {
+                lineColor: s.color,
+                topColor: tint(s.color, 0.18),
+                bottomColor: tint(s.color, 0.02),
                 lineWidth: 2,
                 priceFormat: { type: 'custom', formatter: (p: number) => `${p.toFixed(0)}%`, minMove: 0.01 },
                 lastValueVisible: true,

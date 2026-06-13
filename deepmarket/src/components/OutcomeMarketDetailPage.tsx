@@ -9,6 +9,8 @@ import {
     buildBuyTx,
     buildResolveTx,
     buildRedeemTx,
+    recordPriceSnapshot,
+    loadPriceSnapshots,
     type OutcomeMarketData,
 } from '../lib/outcome';
 import {
@@ -154,6 +156,19 @@ export default function OutcomeMarketDetailPage() {
         '"staked" = this outcome\'s share of the parimutuel pool. ' +
         'They can differ — the order book reflects current sentiment, while the ' +
         'final payout is your pro-rata share of the whole pool.';
+
+    // Snapshot each outcome's current % so resting-order mid moves (not just
+    // fills) accumulate into the chart over time. Only record a *real market
+    // price* (order-book mid or last trade) — never the parimutuel fallback,
+    // which would zig-zag the line when the live mid read momentarily misses.
+    useEffect(() => {
+        if (!market || !marketId) return;
+        for (let i = 0; i < market.n; i++) {
+            const mp = poolPct[i] != null ? poolPct[i]! : (lastPriceByIdx[i] != null ? Math.round(lastPriceByIdx[i] * 100) : null);
+            if (mp != null) recordPriceSnapshot(marketId, i, mp);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [market, poolPct, fills, marketId]);
 
     // ── Actions ──────────────────────────────────────────────────────────
     const handleStake = async () => {
@@ -328,24 +343,33 @@ export default function OutcomeMarketDetailPage() {
     const selHasPool = !isZeroPool(selPool);
     const canOrder = selHasPool && !!managerId && !resolved;
 
-    // Build multi-line chart series from fills: one line per outcome, value =
-    // implied probability over time. Each line is anchored at a start point and
-    // extended to "now" with the current price so all lines span the axis.
+    // Build multi-line chart series, merging two time sources per outcome:
+    //   • on-chain fills (trades)               — price at trade time
+    //   • localStorage snapshots (mid over time) — captures resting-order moves
+    // plus a trailing "now" point at the current %, and a flat lead-in so every
+    // line spans the axis.
     const nowSec = Math.floor(Date.now() / 1000);
-    const fillSecs = fills.map(f => Math.floor(f.ts / 1000)).filter(Boolean);
-    const tStart = fillSecs.length ? Math.min(...fillSecs) - 60 : nowSec - 3600;
     const chartSeries: ChartSeries[] = market.outcomeNames.map((name, i) => {
-        const pts = fills
+        const fillPts = fills
             .filter(f => market.pools.indexOf(f.poolId) === i)
-            .map(f => ({ time: Math.floor(f.ts / 1000), value: Math.round(f.price * 100) }))
-            .sort((a, b) => a.time - b.time);
-        const cur = Math.round(displayPct(i));
-        const start = pts.length ? pts[0].value : cur;
-        return {
-            name,
-            color: colorFor(i),
-            data: [{ time: tStart, value: start }, ...pts, { time: nowSec, value: cur }],
-        };
+            .map(f => ({ time: Math.floor(f.ts / 1000), value: Math.round(f.price * 100) }));
+        const snapPts = marketId ? loadPriceSnapshots(marketId, i) : [];
+        // Trailing point: prefer the live market price; else the last snapshot;
+        // else the parimutuel fallback — so the line doesn't spike at the edge.
+        const mp = poolPct[i] != null ? poolPct[i]! : (lastPriceByIdx[i] != null ? Math.round(lastPriceByIdx[i] * 100) : null);
+        const cur = mp != null ? mp : (snapPts.length ? snapPts[snapPts.length - 1].value : Math.round(displayPct(i)));
+
+        // Merge + sort + de-dupe to one point per timestamp (snapshots win ties).
+        const byTime = new Map<number, number>();
+        for (const p of fillPts) byTime.set(p.time, p.value);
+        for (const p of snapPts) byTime.set(p.time, p.value);
+        byTime.set(nowSec, cur);
+        const merged = [...byTime.entries()].map(([time, value]) => ({ time, value })).sort((a, b) => a.time - b.time);
+
+        // Flat lead-in so a fresh market still draws a full-width line.
+        const firstT = merged[0]?.time ?? nowSec;
+        const lead = { time: Math.min(firstT - 60, nowSec - 3600), value: merged[0]?.value ?? cur };
+        return { name, color: colorFor(i), data: [lead, ...merged] };
     });
 
     return (

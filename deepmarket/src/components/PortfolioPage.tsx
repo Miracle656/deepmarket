@@ -32,6 +32,15 @@ import {
 } from '../lib/predict';
 import { buildWithdrawTx } from '../lib/predict-tx';
 import PnlChart from './PnlChart';
+import {
+    fetchRecentOutcomeMarkets,
+    fetchOutcomeMarket,
+    outcomeCoinType,
+    colorForOutcome,
+} from '../lib/outcome';
+import { fetchManagerOutcomeState } from '../lib/outcomeTrade';
+import { getUserBalanceManager } from '../lib/accountModule';
+import suiDroplet from '../assets/sui-droplet.svg';
 
 interface SpotPosition {
     market: Market;
@@ -93,6 +102,72 @@ export default function PortfolioPage({ markets }: Props) {
             setLoading(false);
         });
     }, [acct, markets]);
+
+    // ── Multi-outcome (FIFA-style) positions ─────────────────────────────
+    interface OutcomePos {
+        objectId: string;
+        question: string;
+        status: number;
+        winner: number | null;
+        // bal = wallet + idle-in-manager; locked = tokens backing open orders.
+        holdings: { name: string; idx: number; bal: number; locked: number }[];
+        suiLocked: number;
+    }
+    const [outcomePositions, setOutcomePositions] = useState<OutcomePos[]>([]);
+    const [outcomeLoading, setOutcomeLoading] = useState(false);
+
+    useEffect(() => {
+        if (!acct) { setOutcomePositions([]); return; }
+        let cancelled = false;
+        setOutcomeLoading(true);
+        (async () => {
+            const [list, managerId] = await Promise.all([
+                fetchRecentOutcomeMarkets(sui as any).catch(() => []),
+                getUserBalanceManager(sui, acct.address).catch(() => null),
+            ]);
+            const cards = await Promise.all(
+                list.map(async (mm) => {
+                    const m = await fetchOutcomeMarket(sui as any, mm.objectId).catch(() => null);
+                    if (!m) return null;
+                    // Wallet token balances per outcome.
+                    const wallet = await Promise.all(
+                        m.outcomeNames.map((_, i) =>
+                            sui
+                                .getBalance({ owner: acct.address, coinType: outcomeCoinType(m.tokenPackageId, i) })
+                                .then((b) => Number(b.totalBalance) / 1e9)
+                                .catch(() => 0)
+                        )
+                    );
+                    // DeepBook BalanceManager: idle (settled) + locked-in-orders.
+                    const mgr = managerId
+                        ? await fetchManagerOutcomeState(sui as any, managerId, m.pools).catch(() => null)
+                        : null;
+                    const holdings = m.outcomeNames.map((name, i) => ({
+                        name,
+                        idx: i,
+                        bal: wallet[i]! + (mgr?.settled[i] ?? 0),
+                        locked: mgr?.locked[i] ?? 0,
+                    }));
+                    const held = holdings.filter((h) => h.bal > 0.0001 || h.locked > 0.0001);
+                    const suiLocked = mgr?.suiLocked ?? 0;
+                    if (held.length === 0 && suiLocked < 0.0001) return null;
+                    return {
+                        objectId: mm.objectId,
+                        question: m.question,
+                        status: m.status,
+                        winner: m.winner,
+                        holdings: held,
+                        suiLocked,
+                    };
+                })
+            );
+            if (!cancelled) {
+                setOutcomePositions(cards.filter((c): c is OutcomePos => c !== null));
+                setOutcomeLoading(false);
+            }
+        })();
+        return () => { cancelled = true; };
+    }, [acct?.address, sui]);
 
     // ── Predict managers + positions (multi-manager) ────────────────────
     useEffect(() => {
@@ -850,6 +925,100 @@ export default function PortfolioPage({ markets }: Props) {
                                         )}
                                         {posValue.toFixed(4)} SUI
                                     </div>
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+            )}
+
+            {/* ── MULTI-OUTCOME MARKETS ──────────────────────────────── */}
+            <div className="markets-header" style={{ marginTop: 32, marginBottom: 12 }}>
+                <span className="markets-title">Multi-Outcome markets</span>
+            </div>
+
+            {outcomeLoading && outcomePositions.length === 0 && (
+                <div className="empty-state" style={{ padding: '24px 20px' }}>
+                    <div className="empty-title">Loading positions…</div>
+                </div>
+            )}
+
+            {!outcomeLoading && outcomePositions.length === 0 && (
+                <div className="empty-state" style={{ padding: '24px 20px' }}>
+                    <div className="empty-icon" style={{ marginBottom: 8 }}>
+                        <Coins size={36} strokeWidth={1} style={{ opacity: 0.4 }} />
+                    </div>
+                    <div className="empty-title">No multi-outcome positions</div>
+                    <div className="empty-desc">
+                        Stake on an outcome in any{' '}
+                        <a href="#" onClick={(e) => { e.preventDefault(); navigate('/markets'); }}>
+                            multi-outcome market
+                        </a>{' '}
+                        to get a tradable token here.
+                    </div>
+                </div>
+            )}
+
+            {outcomePositions.length > 0 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {outcomePositions.map((op) => {
+                        const resolved = op.status === 1;
+                        const winnerName = op.winner !== null ? op.holdings.find((h) => h.idx === op.winner)?.name : undefined;
+                        const holdsWinner = op.winner !== null && op.holdings.some((h) => h.idx === op.winner);
+                        return (
+                            <div
+                                key={op.objectId}
+                                onClick={() => navigate(`/outcome/${op.objectId}`)}
+                                style={{
+                                    padding: '14px 16px',
+                                    background: 'var(--bg-card)',
+                                    border: '1px solid var(--border-base)',
+                                    borderRadius: 10,
+                                    cursor: 'pointer',
+                                    transition: 'border-color 0.15s',
+                                }}
+                                onMouseEnter={(e) => (e.currentTarget.style.borderColor = 'var(--border-strong)')}
+                                onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'var(--border-base)')}
+                            >
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 8 }}>
+                                    <div style={{ fontSize: '0.9rem', fontWeight: 600 }}>{op.question}</div>
+                                    <span className={`tag ${resolved ? 'tag-resolved' : 'tag-active'}`} style={{ fontSize: '0.65rem', flexShrink: 0 }}>
+                                        {resolved ? (winnerName ? `${winnerName} won` : 'Resolved') : 'Active'}
+                                    </span>
+                                </div>
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                                    {op.holdings.map((h) => {
+                                        const isWin = resolved && op.winner === h.idx;
+                                        return (
+                                            <span
+                                                key={h.idx}
+                                                style={{
+                                                    display: 'inline-flex', alignItems: 'center', gap: 6,
+                                                    fontSize: '0.82rem', padding: '4px 10px', borderRadius: 999,
+                                                    background: 'var(--bg-input)',
+                                                    border: `1px solid ${isWin ? 'var(--yes-border)' : 'var(--border-dim)'}`,
+                                                }}
+                                            >
+                                                <span style={{ width: 8, height: 8, borderRadius: '50%', background: colorForOutcome(h.idx) }} />
+                                                {h.name} <strong>{h.bal.toFixed(2)}</strong>
+                                                {h.locked > 0.0001 && (
+                                                    <span style={{ color: 'var(--text-muted)' }}>+{h.locked.toFixed(2)} in orders</span>
+                                                )}
+                                                {isWin && <span style={{ color: 'var(--yes)' }}>· winner</span>}
+                                            </span>
+                                        );
+                                    })}
+                                </div>
+                                {op.suiLocked > 0.0001 && (
+                                    <div style={{ marginTop: 6, fontSize: '0.74rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 5 }}>
+                                        <img src={suiDroplet} alt="SUI" style={{ width: 11, height: 11, opacity: 0.8 }} />
+                                        {op.suiLocked.toFixed(2)} SUI locked in open bids — cancel orders + claim to free it
+                                    </div>
+                                )}
+                                <div style={{ marginTop: 6, fontSize: '0.74rem', color: holdsWinner ? 'var(--yes)' : 'var(--blue)' }}>
+                                    {resolved
+                                        ? holdsWinner ? 'Open to redeem your winning tokens →' : 'Resolved · open market →'
+                                        : 'Open to trade / manage orders →'}
                                 </div>
                             </div>
                         );
