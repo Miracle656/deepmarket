@@ -179,10 +179,24 @@ async function execute(chatId: number, sub: Subscription, ctx: TickCtx, a: Actio
     }
     if (a.kind === 'bid' || a.kind === 'ask') {
         if (!ctx.managerId) return { msg: 'no DeepBook account yet' };
-        const tx = await buildLimitOrderTx(sender, ctx.managerId, m.pools[a.idx]!, a.kind === 'bid', a.price, a.qty);
+        let qty = a.qty;
+        if (a.kind === 'ask') {
+            // An ask deposits outcome tokens as collateral. If the wallet holds
+            // none (e.g. its tokens are already locked in a resting ask), mint
+            // some by staking now and sell on a later tick — never try to sell
+            // tokens it doesn't have (that aborts with InsufficientCoinBalance).
+            const have = Math.floor(ctx.tokenBal[a.idx] ?? 0);
+            if (have < 1) {
+                const stakeTx = buildStakeTx(sender, m, a.idx, BigInt(Math.floor(CONFIG.FIFA_QTY_SUI * 1e9)));
+                const d = await sign(stakeTx);
+                return { msg: `🟢 Staked ${CONFIG.FIFA_QTY_SUI} SUI on *${m.outcomeNames[a.idx]}* (building inventory before asking)`, digest: d };
+            }
+            qty = Math.min(a.qty, have);
+        }
+        const tx = await buildLimitOrderTx(sender, ctx.managerId, m.pools[a.idx]!, a.kind === 'bid', a.price, qty);
         if (!tx) return { msg: `skipped ${a.kind} (insufficient collateral/DEEP)` };
         const d = await sign(tx);
-        return { msg: `${a.kind === 'bid' ? '🔵 Bid' : '🔴 Ask'} ${a.qty} *${m.outcomeNames[a.idx]}* @ ${Math.round(a.price * 100)}¢`, digest: d };
+        return { msg: `${a.kind === 'bid' ? '🔵 Bid' : '🔴 Ask'} ${qty} *${m.outcomeNames[a.idx]}* @ ${Math.round(a.price * 100)}¢`, digest: d };
     }
     if (a.kind === 'claim') {
         if (!ctx.managerId) return { msg: 'no DeepBook account' };
