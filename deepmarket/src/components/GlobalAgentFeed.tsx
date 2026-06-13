@@ -192,20 +192,39 @@ export default function GlobalAgentFeed() {
                         {memories.map((mem, i) => {
                             const m = mem.match(/^\[([^\]]+)\]\s*(.*)$/);
                             const when = m?.[1];
-                            const body = m?.[2] ?? mem;
+                            let body = m?.[2] ?? mem;
+                            // Pull the "agent 0x… " stamp into its own chip.
+                            const am = body.match(/^agent (0x[0-9a-fA-F]+)\s+(.*)$/);
+                            const agent = am?.[1];
+                            if (am) body = am[2]!;
                             return (
                                 <div
                                     key={i}
                                     style={{
                                         display: 'flex', gap: 10, padding: '10px 14px',
                                         border: '1px solid var(--border-base)', borderRadius: 10,
-                                        fontSize: '0.85rem', lineHeight: 1.5,
+                                        fontSize: '0.85rem', lineHeight: 1.5, flexWrap: 'wrap',
                                     }}
                                 >
                                     {when && (
                                         <span className="vault-muted" style={{ fontFamily: 'monospace', fontSize: '0.72rem', flexShrink: 0, whiteSpace: 'nowrap' }}>
                                             {when}
                                         </span>
+                                    )}
+                                    {agent && (
+                                        <a
+                                            href={`https://suiscan.xyz/testnet/account/${agent}`}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            title={agent}
+                                            style={{
+                                                fontFamily: 'monospace', fontSize: '0.72rem', flexShrink: 0,
+                                                color: 'var(--blue)', background: 'var(--bg-input)',
+                                                padding: '1px 7px', borderRadius: 999, whiteSpace: 'nowrap',
+                                            }}
+                                        >
+                                            {shortAddr(agent)}
+                                        </a>
                                     )}
                                     <span>{body}</span>
                                 </div>

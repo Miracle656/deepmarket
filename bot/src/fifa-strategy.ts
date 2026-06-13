@@ -260,7 +260,9 @@ async function tickUser(bot: Telegraf, chatId: number, sub: Subscription): Promi
             .sendMessage(chatId, `🤖 *FIFA bot* (${mode === 'llm' ? '🧠 Claude' : '📐 rule'})\n${result.msg}\n_${action.reason}_${explorer}`, { parse_mode: 'Markdown' })
             .catch(() => {});
         if (isMemWalAvailable()) {
-            void rememberText(`[${new Date().toISOString().slice(0, 16)}] FIFA "${market.question}": ${result.msg}. ${action.reason}`);
+            // Stamp the agent's wallet so the public feed can attribute each
+            // memory to a specific bot (all chats share one MemWal namespace).
+            void rememberText(`[${new Date().toISOString().slice(0, 16)}] agent ${sender} on FIFA "${market.question}": ${result.msg}. ${action.reason}`);
         }
     }
 }
