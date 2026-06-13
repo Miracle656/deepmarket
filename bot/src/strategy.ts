@@ -42,7 +42,7 @@ import {
     type OracleSummary,
     type Position,
 } from './predict.js';
-import { listAll, patchSubscription, type Subscription } from './store.js';
+import { listAll, patchSubscription, getSubscription, type Subscription } from './store.js';
 import { mintBinary, redeemBinary } from './trader.js';
 import { getUserBalances, getUserKeypair } from './user-wallet.js';
 import {
@@ -768,8 +768,10 @@ async function redeemSettledForUser(
                         Math.abs(t.strikeUsd - strikeUsd) < 1
                 );
                 if (matched) {
+                    const walletAddr = (await getSubscription(chatId))?.botWalletAddr;
                     void rememberTrade({
                         chatId,
+                        ...(walletAddr ? { agent: walletAddr } : {}),
                         ts: matched.ts,
                         oracleLabel: matched.oracleLabel,
                         direction: matched.direction,

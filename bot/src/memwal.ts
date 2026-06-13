@@ -130,6 +130,8 @@ export async function pingMemWal(): Promise<boolean> {
 
 export interface TradeMemoryInput {
     chatId: number;
+    /** Agent wallet address — stamped into the memory for feed attribution. */
+    agent?: string;
     ts: number;
     oracleLabel: string;
     direction: 'UP' | 'DOWN';
@@ -160,8 +162,11 @@ function tradeToMemory(t: TradeMemoryInput): string {
             : t.entrySpotUsd <= t.strikeUsd
               ? 'in the money'
               : 'out of the money';
+    // Lead with "agent 0x… " when we know the wallet so the public Agent feed
+    // can attribute it (matches the FIFA memory format); else fall back to chat.
+    const who = t.agent ? `agent ${t.agent}` : `chat ${t.chatId}`;
     return (
-        `[${date}] chat ${t.chatId}: minted ${t.direction} @ $${t.strikeUsd.toFixed(0)} ` +
+        `[${date}] ${who} minted ${t.direction} @ $${t.strikeUsd.toFixed(0)} ` +
         `on ${t.oracleLabel}. ` +
         `Entry spot $${t.entrySpotUsd.toFixed(0)} (${moneyness}). ` +
         `Cover $${t.coverUsd.toFixed(2)}, cost $${t.costUsd.toFixed(2)}. ` +
