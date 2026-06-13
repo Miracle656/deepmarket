@@ -235,6 +235,17 @@ export default function PortfolioPage({ markets }: Props) {
     );
     const totalSpotValue = totalYesValue + totalNoValue;
 
+    // Multi-outcome aggregates (for the summary strip).
+    const omTokens = outcomePositions.reduce(
+        (s, op) => s + op.holdings.reduce((a, h) => a + h.bal, 0),
+        0
+    );
+    const omLockedTokens = outcomePositions.reduce(
+        (s, op) => s + op.holdings.reduce((a, h) => a + h.locked, 0),
+        0
+    );
+    const omSuiLocked = outcomePositions.reduce((s, op) => s + op.suiLocked, 0);
+
     return (
         <div style={{ width: '100%', maxWidth: 980, margin: '0 auto', paddingTop: 8 }}>
             {/* ── DEEPBOOK PREDICT ───────────────────────────────────── */}
@@ -935,6 +946,29 @@ export default function PortfolioPage({ markets }: Props) {
             {/* ── MULTI-OUTCOME MARKETS ──────────────────────────────── */}
             <div className="markets-header" style={{ marginTop: 32, marginBottom: 12 }}>
                 <span className="markets-title">Multi-Outcome markets</span>
+            </div>
+
+            <div className="stat-strip" style={{ marginBottom: 16 }}>
+                <div className="stat-cell">
+                    <div className="stat-cell-label">Open Positions</div>
+                    <div className="stat-cell-value">{outcomePositions.length}</div>
+                </div>
+                <div className="stat-cell">
+                    <div className="stat-cell-label">Outcome Tokens</div>
+                    <div className="stat-cell-value">{omTokens.toFixed(2)}</div>
+                </div>
+                <div className="stat-cell">
+                    <div className="stat-cell-label">Tokens in Orders</div>
+                    <div className="stat-cell-value" style={{ color: 'var(--text-muted)' }}>
+                        {omLockedTokens.toFixed(2)}
+                    </div>
+                </div>
+                <div className="stat-cell">
+                    <div className="stat-cell-label">SUI in Orders</div>
+                    <div className="stat-cell-value" style={{ color: 'var(--blue)' }}>
+                        {omSuiLocked.toFixed(2)} SUI
+                    </div>
+                </div>
             </div>
 
             {outcomeLoading && outcomePositions.length === 0 && (
