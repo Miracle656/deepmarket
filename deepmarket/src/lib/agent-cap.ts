@@ -50,6 +50,8 @@ export interface AgentDecision {
     owner?: string;
     /** Agent address (the bot's custodial wallet that signed the tx). */
     agent?: string;
+    /** sha256(rationale) committed on-chain, lowercase hex (for verification). */
+    rationaleHash?: string;
 }
 
 /**
@@ -186,9 +188,13 @@ export async function getAllRecentDecisions(
                       strike?: string;
                       cover_usd?: string;
                       ts_ms?: string;
+                      rationale_hash?: number[];
                   }
                 | undefined;
             if (!f?.cap_id) continue;
+            const hashHex = Array.isArray(f.rationale_hash)
+                ? f.rationale_hash.map((b) => (b & 0xff).toString(16).padStart(2, '0')).join('')
+                : undefined;
             out.push({
                 capId: String(f.cap_id),
                 owner: f.owner ? String(f.owner) : undefined,
@@ -200,6 +206,7 @@ export async function getAllRecentDecisions(
                 coverUsd: Number(f.cover_usd ?? 0) / DUSDC_SCALE,
                 tsMs: Number(f.ts_ms ?? 0),
                 digest: ev.id.txDigest,
+                ...(hashHex ? { rationaleHash: hashHex } : {}),
             });
             if (out.length >= limit) break;
         }

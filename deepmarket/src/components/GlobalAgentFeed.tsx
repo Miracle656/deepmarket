@@ -3,7 +3,7 @@
 // directly off Sui testnet — no indexer, no server, no mocks. Each row is
 // a real tx digest you can verify on suiscan.
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useSuiClient } from '@mysten/dapp-kit';
 import {
@@ -15,6 +15,8 @@ import {
     TrendingDown,
     Pause,
     Brain,
+    ShieldCheck,
+    ShieldAlert,
 } from 'lucide-react';
 import {
     getAllRecentDecisions,
@@ -33,6 +35,33 @@ const FEED_LIMIT = 80;
 function shortAddr(a: string | undefined): string {
     if (!a) return '—';
     return `${a.slice(0, 6)}…${a.slice(-4)}`;
+}
+
+// A MemWal memory parsed into structured fields for correlating with on-chain
+// decisions and verifying the rationale against the committed hash.
+interface ParsedMemory {
+    agent?: string;   // lowercase wallet
+    tsMs: number;
+    rationale?: string;
+    raw: string;
+}
+
+function parseMemory(mem: string): ParsedMemory {
+    const m = mem.match(/^\[([^\]]+)\]\s*(.*)$/);
+    const when = m?.[1];
+    let body = m?.[2] ?? mem;
+    const am = body.match(/^agent (0x[0-9a-fA-F]+)\s+(.*)$/);
+    const agent = am?.[1]?.toLowerCase();
+    if (am) body = am[2]!;
+    const rm = body.match(/Rationale at entry:\s*(.+)$/);
+    const tsMs = when ? Date.parse(`${when.replace(' ', 'T')}Z`) : NaN;
+    return { agent, tsMs: isNaN(tsMs) ? 0 : tsMs, rationale: rm?.[1]?.trim(), raw: mem };
+}
+
+/** SHA-256 of a UTF-8 string → lowercase hex (matches the bot's commit). */
+async function sha256Hex(s: string): Promise<string> {
+    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
+    return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
 function relativeTime(tsMs: number): string {
@@ -87,6 +116,46 @@ export default function GlobalAgentFeed() {
         const id = setInterval(loadMem, POLL_MS);
         return () => { cancelled = true; clearInterval(id); };
     }, []);
+
+    // Parsed memories + match each on-chain decision to its memory (same agent
+    // wallet, closest timestamp within a day).
+    const memParsed = useMemo(() => (memories ?? []).map(parseMemory), [memories]);
+    const matchMemory = useCallback(
+        (d: AgentDecision): ParsedMemory | null => {
+            if (!d.agent) return null;
+            const agent = d.agent.toLowerCase();
+            let best: ParsedMemory | null = null;
+            let bestDiff = Infinity;
+            for (const p of memParsed) {
+                if (p.agent !== agent || !p.rationale) continue;
+                const diff = Math.abs(p.tsMs - d.tsMs);
+                if (diff < bestDiff) { bestDiff = diff; best = p; }
+            }
+            return best && bestDiff < 24 * 3_600_000 ? best : null;
+        },
+        [memParsed]
+    );
+
+    // Verify each matched rationale against the on-chain sha256 commitment.
+    const [verifyMap, setVerifyMap] = useState<Record<string, 'verified' | 'mismatch'>>({});
+    useEffect(() => {
+        if (!decisions || memParsed.length === 0) return;
+        let cancelled = false;
+        (async () => {
+            const next: Record<string, 'verified' | 'mismatch'> = {};
+            for (const d of decisions) {
+                if (!d.rationaleHash) continue;
+                const mem = matchMemory(d);
+                if (!mem?.rationale) continue;
+                try {
+                    const h = await sha256Hex(mem.rationale);
+                    next[d.digest] = h === d.rationaleHash ? 'verified' : 'mismatch';
+                } catch { /* ignore */ }
+            }
+            if (!cancelled) setVerifyMap(next);
+        })();
+        return () => { cancelled = true; };
+    }, [decisions, memParsed, matchMemory]);
 
     const load = useCallback(async () => {
         setBusy(true);
@@ -301,14 +370,15 @@ export default function GlobalAgentFeed() {
                     </div>
                     {decisions.map((d) => {
                         const o = oracleMap.get(d.oracleId);
+                        const mem = matchMemory(d);
+                        const v = verifyMap[d.digest];
                         return (
+                          <div key={`${d.digest}-${d.tsMs}-${d.capId}`} style={{ borderBottom: '1px solid var(--border-base)' }}>
                             <div
-                                key={`${d.digest}-${d.tsMs}-${d.capId}`}
                                 style={{
                                     display: 'grid',
                                     gridTemplateColumns: '90px 110px 90px 110px 110px 90px 60px',
                                     padding: '12px 14px',
-                                    borderBottom: '1px solid var(--border-base)',
                                     fontSize: '0.85rem',
                                     alignItems: 'center',
                                 }}
@@ -350,6 +420,27 @@ export default function GlobalAgentFeed() {
                                     </a>
                                 </span>
                             </div>
+                            {(mem?.rationale || v) && (
+                                <div style={{ padding: '0 14px 11px', fontSize: '0.78rem', display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap' }}>
+                                    {v === 'verified' && (
+                                        <span style={{ color: 'var(--yes)', display: 'inline-flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+                                            <ShieldCheck size={13} /> rationale verified
+                                        </span>
+                                    )}
+                                    {v === 'mismatch' && (
+                                        <span style={{ color: 'var(--no)', display: 'inline-flex', alignItems: 'center', gap: 4, flexShrink: 0 }} title="The MemWal rationale doesn't hash to the on-chain commitment">
+                                            <ShieldAlert size={13} /> hash mismatch
+                                        </span>
+                                    )}
+                                    {!v && d.rationaleHash && mem?.rationale && (
+                                        <span className="vault-muted" style={{ flexShrink: 0 }}>verifying…</span>
+                                    )}
+                                    {mem?.rationale && (
+                                        <span className="vault-muted" style={{ fontStyle: 'italic' }}>"{mem.rationale}"</span>
+                                    )}
+                                </div>
+                            )}
+                          </div>
                         );
                     })}
                 </div>
