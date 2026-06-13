@@ -112,4 +112,32 @@ export const CONFIG = {
         '0xe95040085976bfd54a1a07225cd46c8a2b4e8e2b6732f140a0fc49850ba73e1a::dusdc::DUSDC',
     DUSDC_DECIMALS: 6,
     CLOCK: '0x6',
+    SUI_TYPE: '0x2::sui::SUI',
+
+    // ── FIFA / multi-outcome market (outcome_market module) ───────────
+    // The deepmarket_contract v4 package that holds outcome_market, and the
+    // shared OutcomeMarket the bots trade. FIFA_MARKET_ID is overridable so
+    // the fleet can be pointed at any multi-outcome market.
+    OUTCOME_PACKAGE_ID: envOr(
+        'OUTCOME_PACKAGE_ID',
+        '0x8c02107957d0190d6faa05e6299991b6693e11583a3361c1b8be4ae3ef4ba190'
+    ),
+    FIFA_MARKET_ID: envOr(
+        'FIFA_MARKET_ID',
+        '0x8b592604f3492b69e1b566f77d94e29bf68c316757961c1255da4c3444effdad'
+    ),
+    FIFA_TICK_MS: Number(process.env.FIFA_TICK_MS ?? 60000),
+    /** Default SUI per stake / order the FIFA bot uses. */
+    FIFA_QTY_SUI: Number(process.env.FIFA_QTY_SUI ?? 1),
+
+    // ── DeepBook V3 (for the FIFA order-book half) ────────────────────
+    DEEPBOOK_PACKAGE_ID:
+        '0x22be4cade64bf2d02412c7e8d0e8beea2f78828b948118d46735315409371a3c',
+    // Implementation package that *emits* events / defines on-chain types.
+    DEEPBOOK_EVENT_PKG:
+        '0xfb28c4cbc6865bd1c897d26aecbe1f8792d1509a20ffec692c800660cbec6982',
+    DEEP_TOKEN_TYPE:
+        '0x36dbef866a1d62bf7328989a10fb2f07d769f4ee587c0de4a0a256e57e0a58a8::deep::DEEP',
+    DEEP_SUI_REFERENCE_POOL_ID:
+        '0x48c95963e9eac37a316b7ae04a0deb761bcdcc2b67912374d6036e7f0e9bae9f',
 };

@@ -75,6 +75,26 @@ export interface Subscription {
     agentCapId?: string;
     /** Cached "this cap is revoked" flag so we stop trading without re-querying every tick. */
     agentCapRevoked?: boolean;
+
+    // ── FIFA / multi-outcome strategy (separate from Predict) ─────────
+    /** When true, the FIFA strategy loop trades the outcome market on this wallet. */
+    fifaStrategyEnabled?: boolean;
+    /** Trading brain for FIFA: Claude-reasoned or cheap rule-based. */
+    fifaAgentMode?: 'llm' | 'rule';
+    /** DeepBook BalanceManager owned by this wallet (for the order-book half). */
+    fifaManagerId?: string | null;
+    /** Heartbeat: last FIFA tick time + short outcome. */
+    fifaLastCheckAt?: number;
+    fifaLastOutcome?: string;
+    /** Recent FIFA actions for the menu. */
+    fifaTrades?: {
+        ts: number;
+        action: string;
+        outcome?: string;
+        detail?: string;
+        digest?: string;
+        error?: string;
+    }[];
 }
 
 interface Db {

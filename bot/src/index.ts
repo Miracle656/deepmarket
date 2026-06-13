@@ -67,6 +67,7 @@ import {
 } from './spot.js';
 import {
     botTraderMenu,
+    fifaMenu,
     mainMenu,
     predictSubMenu,
     spotSubMenu,
@@ -75,6 +76,8 @@ import {
     urlOrCallback,
     type MenuState,
 } from './menus.js';
+import { startFifaLoop } from './fifa-strategy.js';
+import { readFifaMarket, walletBalances, getBalanceManagerId } from './fifa.js';
 
 const SUI_ADDR_RE = /^0x[a-fA-F0-9]{64}$/;
 
@@ -633,6 +636,78 @@ async function main() {
         await editOrReply(ctx, view.text, { reply_markup: view.reply_markup });
     }
 
+    async function renderFifaMenu(ctx: Context): Promise<void> {
+        if (!ctx.chat) return;
+        const sub = await getUserSubscription(ctx.chat.id);
+        if (!sub?.botWalletKey || !sub.botWalletAddr) {
+            const view = fifaMenu({ needsWallet: true, strategyOn: false, mode: 'rule' });
+            await editOrReply(ctx, view.text, { reply_markup: view.reply_markup });
+            return;
+        }
+        const addr = sub.botWalletAddr;
+        const [bal, managerId, market] = await Promise.all([
+            walletBalances(addr).catch(() => ({ sui: 0, deep: 0, token: 0 })),
+            sub.fifaManagerId
+                ? Promise.resolve(sub.fifaManagerId)
+                : getBalanceManagerId(addr).catch(() => null),
+            readFifaMarket().catch(() => null),
+        ]);
+        const recentLines = (sub.fifaTrades ?? [])
+            .slice(-5)
+            .reverse()
+            .map((t) => {
+                const when = new Date(t.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                const st = t.error ? '❌' : '✅';
+                return `${when} ${st} ${t.action}${t.outcome ? ' ' + t.outcome : ''}`;
+            });
+        const view = fifaMenu({
+            needsWallet: false,
+            addr,
+            sui: bal.sui,
+            deep: bal.deep,
+            managerId,
+            strategyOn: !!sub.fifaStrategyEnabled,
+            mode: sub.fifaAgentMode ?? 'rule',
+            memwalOn: isMemWalAvailable(),
+            ...(sub.fifaLastCheckAt ? { lastCheckAt: sub.fifaLastCheckAt } : {}),
+            ...(sub.fifaLastOutcome ? { lastOutcome: sub.fifaLastOutcome } : {}),
+            recentLines,
+            ...(market ? { question: market.question } : {}),
+        });
+        await editOrReply(ctx, view.text, { reply_markup: view.reply_markup });
+    }
+
+    bot.action('menu:fifa', async (ctx) => {
+        await ctx.answerCbQuery();
+        await renderFifaMenu(ctx);
+    });
+
+    bot.action('fifa:togglestrategy', async (ctx) => {
+        if (!ctx.chat) return;
+        const sub = await getUserSubscription(ctx.chat.id);
+        if (!sub?.botWalletKey) {
+            await ctx.answerCbQuery('Set up a wallet in 🤖 Bot trader first');
+            return;
+        }
+        const next = !sub.fifaStrategyEnabled;
+        await patchSubscription(ctx.chat.id, {
+            fifaStrategyEnabled: next,
+            ...(sub.fifaAgentMode ? {} : { fifaAgentMode: 'rule' as const }),
+        });
+        await ctx.answerCbQuery(next ? 'FIFA strategy started' : 'FIFA strategy paused');
+        await renderFifaMenu(ctx);
+    });
+
+    bot.action('fifa:togglemode', async (ctx) => {
+        if (!ctx.chat) return;
+        const sub = await getUserSubscription(ctx.chat.id);
+        if (!sub) return;
+        const next = (sub.fifaAgentMode ?? 'rule') === 'llm' ? 'rule' : 'llm';
+        await patchSubscription(ctx.chat.id, { fifaAgentMode: next });
+        await ctx.answerCbQuery(next === 'llm' ? '🧠 Brain: Claude' : '📐 Brain: rule-based');
+        await renderFifaMenu(ctx);
+    });
+
     bot.action('menu:bot', async (ctx) => {
         await ctx.answerCbQuery();
         await renderBotMenu(ctx);
@@ -848,6 +923,7 @@ async function main() {
 
     const stopWatchers = startWatchers(bot);
     const stopStrategy = startStrategyLoop(bot);
+    const stopFifa = startFifaLoop(bot);
 
     // Run modes (decided by env):
     //
@@ -933,6 +1009,7 @@ async function main() {
     const shutdown = () => {
         stopWatchers();
         stopStrategy();
+        stopFifa();
         bot.stop('SIGTERM');
     };
     process.once('SIGINT', shutdown);

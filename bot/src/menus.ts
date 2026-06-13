@@ -79,6 +79,9 @@ export function mainMenu(state: MenuState): {
                 ],
                 [
                     Markup.button.callback('🤖 Bot trader', 'menu:bot'),
+                    Markup.button.callback('🏆 FIFA bot', 'menu:fifa'),
+                ],
+                [
                     Markup.button.callback('⚙️ Settings', 'menu:settings'),
                 ],
                 [
@@ -310,6 +313,88 @@ export function botTraderMenu(state: BotTraderState): {
                     Markup.button.callback('🔁 Rotate wallet', 'bot:rotate'),
                 ],
                 [Markup.button.callback('🔄 Refresh', 'menu:bot')],
+                backButton('menu:main'),
+            ],
+        },
+    };
+}
+
+export interface FifaMenuState {
+    /** No custodial wallet yet — point the user at Bot trader to set one up. */
+    needsWallet: boolean;
+    addr?: string;
+    sui?: number;
+    deep?: number;
+    managerId?: string | null;
+    strategyOn: boolean;
+    /** Selected brain (stored preference). */
+    mode: 'llm' | 'rule';
+    memwalOn?: boolean;
+    lastCheckAt?: number;
+    lastOutcome?: string;
+    recentLines?: string[];
+    question?: string;
+}
+
+export function fifaMenu(state: FifaMenuState): {
+    text: string;
+    reply_markup: InlineKeyboardMarkup;
+} {
+    if (state.needsWallet) {
+        return {
+            text:
+                '*🏆 FIFA bot*\n\n' +
+                'Autonomous trading on the multi-outcome World Cup market — stakes, ' +
+                'market-makes the order book, claims, and redeems on your behalf.\n\n' +
+                'First set up a custodial wallet in *🤖 Bot trader* (it’s shared). ' +
+                'Fund it with SUI (gas + stakes) and a little DEEP (order-book fees).',
+            reply_markup: {
+                inline_keyboard: [
+                    [Markup.button.callback('🤖 Go to Bot trader', 'menu:bot')],
+                    backButton('menu:main'),
+                ],
+            },
+        };
+    }
+    const addrShort = state.addr ? `${state.addr.slice(0, 10)}…${state.addr.slice(-6)}` : 'unknown';
+    const lines = [
+        '*🏆 FIFA bot*',
+        state.question ? `_${state.question}_` : '',
+        '',
+        `Wallet: \`${addrShort}\``,
+        `SUI: ${(state.sui ?? 0).toFixed(3)}   DEEP: ${(state.deep ?? 0).toFixed(1)}`,
+        `DeepBook acct: ${state.managerId ? '🟢 ready' : '⚪ none (order-book half needs DEEP)'}`,
+        `Strategy: ${state.strategyOn ? '🟢 ON' : '⚪ off'}  ·  ${state.mode === 'llm' ? '🧠 Claude' : '📐 rule'}` +
+            (state.memwalOn ? '  ·  🐋 MemWal' : ''),
+    ];
+    if (state.strategyOn && state.lastCheckAt) {
+        const t = new Date(state.lastCheckAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        lines.push(`💓 Last check ${t} — ${state.lastOutcome ?? 'evaluated'}`);
+    }
+    if (state.recentLines && state.recentLines.length) {
+        lines.push('', 'Recent activity:');
+        for (const l of state.recentLines) lines.push(`  ${l}`);
+    }
+    return {
+        text: lines.filter((l) => l !== undefined).join('\n'),
+        reply_markup: {
+            inline_keyboard: [
+                [
+                    Markup.button.callback(
+                        state.strategyOn ? '⏸ Pause FIFA strategy' : '▶️ Start FIFA strategy',
+                        'fifa:togglestrategy'
+                    ),
+                ],
+                [
+                    Markup.button.callback(
+                        state.mode === 'llm' ? '🧠 Brain: Claude → switch to rule' : '📐 Brain: rule → switch to Claude',
+                        'fifa:togglemode'
+                    ),
+                ],
+                [
+                    urlOrCallback('↗ Open market', `${CONFIG.WEB_URL}/markets`, 'menu:open'),
+                    Markup.button.callback('🔄 Refresh', 'menu:fifa'),
+                ],
                 backButton('menu:main'),
             ],
         },

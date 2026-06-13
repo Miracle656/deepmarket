@@ -49,6 +49,36 @@ export function isMemWalAvailable(): boolean {
     return getClient() !== null;
 }
 
+/**
+ * Write an arbitrary natural-language memory (used by the FIFA strategy, whose
+ * actions don't fit the Predict TradeMemoryInput shape). Fire-and-forget.
+ */
+export async function rememberText(text: string): Promise<void> {
+    const c = getClient();
+    if (!c || !text) return;
+    try {
+        await c.remember(text);
+    } catch (e) {
+        console.warn('[memwal] rememberText failed:', e instanceof Error ? e.message : String(e));
+    }
+}
+
+/** Generic semantic recall by free-text query (used by the FIFA strategy). */
+export async function recallText(
+    query: string,
+    limit = CONFIG.MEMWAL_RECALL_LIMIT
+): Promise<string[]> {
+    const c = getClient();
+    if (!c || !query) return [];
+    try {
+        const res = await c.recall(query, limit);
+        return res.results.map((r) => r.text).filter(Boolean);
+    } catch (e) {
+        console.warn('[memwal] recallText failed:', e instanceof Error ? e.message : String(e));
+        return [];
+    }
+}
+
 // ── Health check (called once at startup) ────────────────────────────────
 
 export async function pingMemWal(): Promise<boolean> {
