@@ -3,7 +3,7 @@ import { Routes, Route, Navigate, NavLink, useNavigate } from 'react-router-dom'
 import { ConnectButton, useCurrentAccount, useSuiClient } from '@mysten/dapp-kit';
 import { Menu, X, BarChart3, TrendingUp, Info, Wallet } from 'lucide-react';
 import { CONFIG, type Market } from './lib/config';
-import { fetchRecentOutcomeMarkets } from './lib/outcome';
+import { fetchRecentOutcomeMarkets, fetchOutcomeMarket } from './lib/outcome';
 import { ToastProvider } from './lib/toast';
 import { useMarkets } from './lib/useMarkets';
 import CreateMarketModal from './components/CreateMarketModal';
@@ -55,9 +55,23 @@ function AppInner() {
 
   // Multi-outcome markets are standalone shared objects (not in the indexer),
   // so we discover them client-side from their creation events.
-  const [outcomeMarkets, setOutcomeMarkets] = useState<{ objectId: string; question: string; n: number }[]>([]);
+  const [outcomeMarkets, setOutcomeMarkets] = useState<
+    { objectId: string; question: string; n: number; status: number; vault: bigint }[]
+  >([]);
   useEffect(() => {
-    fetchRecentOutcomeMarkets(suiClient).then(setOutcomeMarkets).catch(() => { });
+    let cancelled = false;
+    (async () => {
+      const list = await fetchRecentOutcomeMarkets(suiClient).catch(() => []);
+      // Enrich each with status + vault so they count toward the stat strip.
+      const enriched = await Promise.all(
+        list.map(async (mm) => {
+          const m = await fetchOutcomeMarket(suiClient, mm.objectId).catch(() => null);
+          return { ...mm, status: m?.status ?? 0, vault: m?.vault ?? 0n };
+        })
+      );
+      if (!cancelled) setOutcomeMarkets(enriched);
+    })();
+    return () => { cancelled = true; };
   }, [suiClient]);
 
   const [filter, setFilter] = useState<Filter>('All');
@@ -81,8 +95,14 @@ function AppInner() {
     return true;
   });
 
-  const totalVol = markets.reduce((s, m) => s + m.volume, 0);
-  const activeCount = markets.filter(m => m.status === 'Active').length;
+  // Totals fold in multi-outcome markets: their vault (raw 1e9 SUI) adds to
+  // volume, and active (status 0) markets add to the counts.
+  const outcomeVaultRaw = outcomeMarkets.reduce((s, o) => s + Number(o.vault), 0);
+  const totalVol = markets.reduce((s, m) => s + m.volume, 0) + outcomeVaultRaw;
+  const totalMarketCount = markets.length + outcomeMarkets.length;
+  const activeCount =
+    markets.filter(m => m.status === 'Active').length +
+    outcomeMarkets.filter(o => o.status === 0).length;
 
   return (
     <div className="app">
@@ -255,7 +275,7 @@ function AppInner() {
                 <div className="stat-strip">
                   <div className="stat-cell">
                     <div className="stat-cell-label">Total Markets</div>
-                    <div className="stat-cell-value">{markets.length}</div>
+                    <div className="stat-cell-value">{totalMarketCount}</div>
                   </div>
                   <div className="stat-cell">
                     <div className="stat-cell-label">Active</div>
