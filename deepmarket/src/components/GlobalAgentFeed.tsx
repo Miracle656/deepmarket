@@ -17,6 +17,8 @@ import {
     Brain,
     ShieldCheck,
     ShieldAlert,
+    ExternalLink,
+    Bot,
 } from 'lucide-react';
 import {
     getAllRecentDecisions,
@@ -44,6 +46,18 @@ interface ParsedMemory {
     tsMs: number;
     rationale?: string;
     raw: string;
+}
+
+// A memory as returned by the bot's /agent-memories endpoint.
+interface MemoryItem {
+    text: string;
+    /** Walrus blob id of the (Seal-encrypted) memory blob. */
+    blobId?: string;
+}
+
+/** Walrus blob explorer (Walruscan) link for a blob id. */
+function walruscanUrl(blobId: string): string {
+    return `https://walruscan.com/testnet/blob/${blobId}`;
 }
 
 function parseMemory(mem: string): ParsedMemory {
@@ -99,7 +113,8 @@ export default function GlobalAgentFeed() {
     const [busy, setBusy] = useState(false);
     // MemWal memories (written by the bots' agents, independent of on-chain
     // AgentCap authorization). Pulled from the bot's read-only proxy endpoint.
-    const [memories, setMemories] = useState<string[] | null>(null);
+    // Each carries its Walrus blob id so we can deep-link to the encrypted blob.
+    const [memories, setMemories] = useState<MemoryItem[] | null>(null);
 
     useEffect(() => {
         let cancelled = false;
@@ -107,7 +122,14 @@ export default function GlobalAgentFeed() {
             try {
                 const res = await fetch(`${CONFIG.BOT_URL}/agent-memories?limit=40`);
                 const data = await res.json();
-                if (!cancelled) setMemories(Array.isArray(data.memories) ? data.memories : []);
+                const raw: unknown[] = Array.isArray(data.memories) ? data.memories : [];
+                // Tolerate both the new {text, blobId} shape and the old string[].
+                const items: MemoryItem[] = raw.map((m) =>
+                    typeof m === 'string'
+                        ? { text: m }
+                        : { text: String((m as MemoryItem).text ?? ''), blobId: (m as MemoryItem).blobId },
+                );
+                if (!cancelled) setMemories(items);
             } catch {
                 if (!cancelled) setMemories([]);
             }
@@ -119,7 +141,7 @@ export default function GlobalAgentFeed() {
 
     // Parsed memories + match each on-chain decision to its memory (same agent
     // wallet, closest timestamp within a day).
-    const memParsed = useMemo(() => (memories ?? []).map(parseMemory), [memories]);
+    const memParsed = useMemo(() => (memories ?? []).map((m) => parseMemory(m.text)), [memories]);
     const matchMemory = useCallback(
         (d: AgentDecision): ParsedMemory | null => {
             if (!d.agent) return null;
@@ -251,12 +273,12 @@ export default function GlobalAgentFeed() {
             {/* MemWal memories — the agents' narrative memory (Walrus-backed),
                 written every tick regardless of on-chain AgentCap auth. */}
             <div style={{ marginTop: 8, marginBottom: 20 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
                     <span style={{ fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                         <Brain size={15} /> Agent memories
                     </span>
                     <span className="vault-muted" style={{ fontSize: '0.78rem' }}>
-                        Walrus-backed (MemWal) · {memories?.length ?? 0}
+                        Encrypted on Walrus via MemWal · {memories?.length ?? 0}
                     </span>
                 </div>
                 {memories === null && <div className="vs-empty">Loading agent memories…</div>}
@@ -267,50 +289,100 @@ export default function GlobalAgentFeed() {
                     </div>
                 )}
                 {memories && memories.length > 0 && (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <div
+                        style={{
+                            display: 'grid',
+                            gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
+                            gap: 10,
+                        }}
+                    >
                         {memories.map((mem, i) => {
-                            const m = mem.match(/^\[([^\]]+)\]\s*(.*)$/);
-                            const when = m?.[1];
-                            let body = m?.[2] ?? mem;
+                            const p = memParsed[i];
+                            const m = mem.text.match(/^\[([^\]]+)\]\s*(.*)$/);
+                            const whenRaw = m?.[1];
+                            let body = m?.[2] ?? mem.text;
                             // Pull the "agent 0x… " stamp into its own chip.
                             const am = body.match(/^agent (0x[0-9a-fA-F]+)\s+(.*)$/);
                             const agent = am?.[1];
                             if (am) body = am[2]!;
+                            const rel = p && p.tsMs ? relativeTime(p.tsMs) : null;
                             return (
                                 <div
                                     key={i}
                                     style={{
-                                        display: 'flex', gap: 10, padding: '10px 14px',
-                                        border: '1px solid var(--border-base)', borderRadius: 10,
-                                        fontSize: '0.85rem', lineHeight: 1.5, flexWrap: 'wrap',
+                                        display: 'flex', flexDirection: 'column', gap: 8,
+                                        padding: '12px 14px',
+                                        border: '1px solid var(--border-base)', borderRadius: 12,
+                                        background: 'var(--bg-input)',
                                     }}
                                 >
-                                    {when && (
-                                        <span className="vault-muted" style={{ fontFamily: 'monospace', fontSize: '0.72rem', flexShrink: 0, whiteSpace: 'nowrap' }}>
-                                            {when}
-                                        </span>
-                                    )}
-                                    {agent && (
-                                        <a
-                                            href={`https://suiscan.xyz/testnet/account/${agent}`}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            title={agent}
-                                            style={{
-                                                fontFamily: 'monospace', fontSize: '0.72rem', flexShrink: 0,
-                                                color: 'var(--blue)', background: 'var(--bg-input)',
-                                                padding: '1px 7px', borderRadius: 999, whiteSpace: 'nowrap',
-                                            }}
-                                        >
-                                            {shortAddr(agent)}
-                                        </a>
-                                    )}
-                                    <span>{body}</span>
+                                    {/* meta row */}
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                                        {agent ? (
+                                            <a
+                                                href={`https://suiscan.xyz/testnet/account/${agent}`}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                title={agent}
+                                                style={{
+                                                    display: 'inline-flex', alignItems: 'center', gap: 4,
+                                                    fontFamily: 'monospace', fontSize: '0.72rem',
+                                                    color: 'var(--blue)', background: 'var(--bg-card, rgba(125,125,125,0.12))',
+                                                    padding: '2px 8px', borderRadius: 999, whiteSpace: 'nowrap',
+                                                    textDecoration: 'none',
+                                                }}
+                                            >
+                                                <Bot size={11} /> {shortAddr(agent)}
+                                            </a>
+                                        ) : (
+                                            <span
+                                                className="vault-muted"
+                                                style={{
+                                                    display: 'inline-flex', alignItems: 'center', gap: 4,
+                                                    fontSize: '0.72rem', padding: '2px 8px',
+                                                    borderRadius: 999, background: 'var(--bg-card, rgba(125,125,125,0.12))',
+                                                }}
+                                            >
+                                                <Bot size={11} /> agent
+                                            </span>
+                                        )}
+                                        {rel && (
+                                            <span
+                                                className="vault-muted"
+                                                title={whenRaw}
+                                                style={{ fontSize: '0.72rem', whiteSpace: 'nowrap' }}
+                                            >
+                                                {rel}
+                                            </span>
+                                        )}
+                                        {mem.blobId && (
+                                            <a
+                                                href={walruscanUrl(mem.blobId)}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                title={`View encrypted blob on Walruscan\n${mem.blobId}`}
+                                                style={{
+                                                    marginLeft: 'auto',
+                                                    display: 'inline-flex', alignItems: 'center', gap: 4,
+                                                    fontSize: '0.72rem', color: 'var(--blue)',
+                                                    textDecoration: 'none', whiteSpace: 'nowrap',
+                                                }}
+                                            >
+                                                <ExternalLink size={11} /> Walrus
+                                            </a>
+                                        )}
+                                    </div>
+                                    {/* body */}
+                                    <div style={{ fontSize: '0.85rem', lineHeight: 1.55 }}>{body}</div>
                                 </div>
                             );
                         })}
                     </div>
                 )}
+                <p className="vault-muted" style={{ fontSize: '0.72rem', marginTop: 10 }}>
+                    Memories are Seal-encrypted before upload, so the Walrus blob shows ciphertext —
+                    the plaintext you see here is decrypted server-side by the bot's delegate key.
+                </p>
             </div>
 
             {/* Aggregate counts */}

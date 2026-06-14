@@ -69,7 +69,13 @@ export async function rememberText(text: string): Promise<void> {
  * merge/dedupe. Independent of on-chain AgentCap authorization — the bots
  * write these regardless, so the feed shows activity even with no AgentCap.
  */
-export async function recentMemories(limit = 30): Promise<string[]> {
+export interface RecentMemory {
+    text: string;
+    /** Walrus blob id — lets the web feed deep-link to the encrypted blob. */
+    blobId?: string;
+}
+
+export async function recentMemories(limit = 30): Promise<RecentMemory[]> {
     const c = getClient();
     if (!c) return [];
     const queries = [
@@ -78,7 +84,7 @@ export async function recentMemories(limit = 30): Promise<string[]> {
         'recent agent trade decision and reasoning',
     ];
     const seen = new Set<string>();
-    const out: string[] = [];
+    const out: RecentMemory[] = [];
     for (const q of queries) {
         if (out.length >= limit) break;
         try {
@@ -86,7 +92,7 @@ export async function recentMemories(limit = 30): Promise<string[]> {
             for (const r of res.results) {
                 if (r.text && !seen.has(r.text)) {
                     seen.add(r.text);
-                    out.push(r.text);
+                    out.push({ text: r.text, blobId: r.blob_id });
                 }
             }
         } catch { /* ignore */ }
