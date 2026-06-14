@@ -29,6 +29,19 @@ import Sparkline from './components/Sparkline';
 
 type Filter = 'All' | 'Active' | 'Resolved';
 
+// Header / drawer nav. Note "Agent" points to the live feed (/agents, plural),
+// NOT the authorize page (/agent, singular) — the feed is the public showcase;
+// authorizing an agent is reachable from a link on the feed itself.
+const NAV_TABS = [
+  { to: '/markets',     label: 'Markets'     },
+  { to: '/predict',     label: 'Predict'     },
+  { to: '/vault',       label: 'Vault'       },
+  { to: '/leaderboard', label: 'Leaderboard' },
+  { to: '/portfolio',   label: 'Portfolio'   },
+  { to: '/agents',      label: 'Agent'       },
+  { to: '/about',       label: 'About'       },
+] as const;
+
 import deepMarketLogo from './assets/deepmarket.png';
 
 // Volume is cumulative QUOTE traded via DeepBook fills, in raw 1e9 SUI
@@ -124,13 +137,13 @@ function AppInner() {
         </button>
 
         <div className="nav-tabs">
-          {(['markets', 'predict', 'vault', 'leaderboard', 'portfolio', 'agent', 'about'] as const).map(t => (
+          {(NAV_TABS).map(({ to, label }) => (
             <NavLink
-              key={t}
-              to={`/${t}`}
+              key={to}
+              to={to}
               className={({ isActive }) => `nav-tab ${isActive ? 'active' : ''}`}
             >
-              {t.charAt(0).toUpperCase() + t.slice(1)}
+              {label}
             </NavLink>
           ))}
         </div>
@@ -199,16 +212,16 @@ function AppInner() {
               </button>
             </div>
             <nav className="mobile-drawer-nav">
-              {(['markets', 'predict', 'vault', 'leaderboard', 'portfolio', 'agent', 'about'] as const).map((t) => (
+              {(NAV_TABS).map(({ to, label }) => (
                 <NavLink
-                  key={t}
-                  to={`/${t}`}
+                  key={to}
+                  to={to}
                   className={({ isActive }) =>
                     `mobile-drawer-link ${isActive ? 'active' : ''}`
                   }
                   onClick={() => setMobileMenuOpen(false)}
                 >
-                  {t.charAt(0).toUpperCase() + t.slice(1)}
+                  {label}
                 </NavLink>
               ))}
               <a

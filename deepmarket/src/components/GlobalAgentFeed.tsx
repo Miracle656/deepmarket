@@ -228,14 +228,24 @@ export default function GlobalAgentFeed() {
                         like when the listening is verifiable.
                     </p>
                 </div>
-                <button
-                    className="btn btn-ghost btn-sm"
-                    onClick={load}
-                    disabled={busy}
-                    style={{ display: 'flex', alignItems: 'center', gap: 6 }}
-                >
-                    <RefreshCw size={14} className={busy ? 'spin' : ''} /> Refresh
-                </button>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <button
+                        className="btn btn-ghost btn-sm"
+                        onClick={() => navigate('/agent')}
+                        style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+                        title="Authorize an AI agent on-chain (AgentCap)"
+                    >
+                        <ShieldCheck size={14} /> Authorize agent
+                    </button>
+                    <button
+                        className="btn btn-ghost btn-sm"
+                        onClick={load}
+                        disabled={busy}
+                        style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+                    >
+                        <RefreshCw size={14} className={busy ? 'spin' : ''} /> Refresh
+                    </button>
+                </div>
             </div>
 
             {/* MemWal memories — the agents' narrative memory (Walrus-backed),
