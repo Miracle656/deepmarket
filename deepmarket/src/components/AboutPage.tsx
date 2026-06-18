@@ -154,6 +154,7 @@ export default function AboutPage() {
                     pkg={CONFIG.PACKAGE_ID}
                     rows={[
                         ['Package', CONFIG.PACKAGE_ID],
+                        ['Multi-outcome package', CONFIG.OUTCOME_PACKAGE_ID],
                         ['YES TreasuryCap', CONFIG.YES_TREASURY_CAP],
                         ['NO TreasuryCap', CONFIG.NO_TREASURY_CAP],
                         ['Upgrade Cap', CONFIG.UPGRADE_CAP],
