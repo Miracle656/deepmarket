@@ -20,11 +20,13 @@ import {
     listTradeableOracles,
     getCachedTradeableOracles,
     getOracleTradeCount,
+    getOracleState,
     formatStrikeUsd,
     formatExpiry,
     statusColor,
     type OracleSummary,
 } from '../lib/predict';
+import { binaryFairPrice, sviFromUpdate, yearsToExpiry } from '../lib/svi';
 
 export default function PredictPage() {
     const navigate = useNavigate();
@@ -276,14 +278,60 @@ function OracleCard({
     onPick: (id: string) => void;
     tradeCount?: number;
 }) {
+    const settled = oracle.status === 'settled';
+    // Live SVI-implied odds + a near-the-money strike, so each card reads like a
+    // real prediction market ("Will BTC be above $X?" → Up 62% / Down 38%)
+    // instead of the meaningless shared $50k min_strike.
+    const [odds, setOdds] = useState<{ up: number; strikeRaw: number } | null>(null);
+
+    useEffect(() => {
+        if (settled) return;
+        let cancelled = false;
+        getOracleState(oracle.oracle_id)
+            .then((st) => {
+                if (cancelled || !st.latest_price) return;
+                const fwdRaw = st.latest_price.forward || st.latest_price.spot;
+                const fwdUsd = fwdRaw / 1e9;
+                const strikeUsd = Math.max(500, Math.round(fwdUsd / 500) * 500);
+                const strikeRaw = strikeUsd * 1e9;
+                const T = yearsToExpiry(oracle.expiry);
+                let up = 0.5;
+                if (st.latest_svi) {
+                    up = binaryFairPrice(fwdRaw, strikeRaw, T, sviFromUpdate(st.latest_svi), true);
+                }
+                up = Math.min(0.99, Math.max(0.01, up));
+                if (!cancelled) setOdds({ up, strikeRaw });
+            })
+            .catch(() => {
+                /* leave odds null → shows placeholder */
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [oracle.oracle_id, oracle.expiry, settled]);
+
+    const upPct = odds ? Math.round(odds.up * 100) : null;
+    const downPct = upPct === null ? null : 100 - upPct;
+
     return (
-        <button
-            className="predict-card"
+        <div
+            className="predict-card pm-card"
+            role="button"
+            tabIndex={0}
             onClick={() => onPick(oracle.oracle_id)}
+            onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    onPick(oracle.oracle_id);
+                }
+            }}
             data-status={oracle.status}
         >
             <div className="predict-card-h">
-                <span className="predict-card-asset">{oracle.underlying_asset}</span>
+                <span className="pm-asset">
+                    <span className="pm-asset-dot" />
+                    {oracle.underlying_asset}
+                </span>
                 <span
                     className="predict-card-status"
                     style={{ color: statusColor(oracle.status) }}
@@ -291,21 +339,61 @@ function OracleCard({
                     {oracle.status}
                 </span>
             </div>
-            <div className="predict-card-expiry">
-                <Clock size={12} />
-                <span>{formatExpiry(oracle.expiry)}</span>
+
+            <div className="pm-q">
+                {settled
+                    ? `${oracle.underlying_asset} round settled`
+                    : `Will ${oracle.underlying_asset} be above ${
+                          odds ? formatStrikeUsd(odds.strikeRaw) : '…'
+                      }?`}
+            </div>
+
+            {settled ? (
+                oracle.settlement_price !== null &&
+                oracle.settlement_price !== undefined && (
+                    <div className="predict-card-strike">
+                        <span className="predict-card-label">Settled at</span>
+                        <span className="predict-card-value">
+                            {formatStrikeUsd(oracle.settlement_price)}
+                        </span>
+                    </div>
+                )
+            ) : (
+                <div className="pm-sides">
+                    <div className="pm-side up">
+                        <span
+                            className="pm-side-bar"
+                            style={{ width: `${upPct ?? 0}%` }}
+                        />
+                        <span className="pm-side-label">Up</span>
+                        <span className="pm-side-pct">
+                            {upPct === null ? '··' : `${upPct}%`}
+                        </span>
+                    </div>
+                    <div className="pm-side down">
+                        <span
+                            className="pm-side-bar"
+                            style={{ width: `${downPct ?? 0}%` }}
+                        />
+                        <span className="pm-side-label">Down</span>
+                        <span className="pm-side-pct">
+                            {downPct === null ? '··' : `${downPct}%`}
+                        </span>
+                    </div>
+                </div>
+            )}
+
+            <div className="pm-foot">
+                <span className="pm-foot-item">
+                    <Clock size={12} />
+                    {formatExpiry(oracle.expiry)}
+                </span>
                 {tradeCount !== undefined && (
                     <span
-                        className="predict-card-trades"
+                        className="pm-foot-item"
                         style={{
                             marginLeft: 'auto',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: 4,
-                            color:
-                                tradeCount > 0
-                                    ? 'var(--yes)'
-                                    : 'var(--text-muted)',
+                            color: tradeCount > 0 ? 'var(--yes)' : 'var(--text-muted)',
                         }}
                     >
                         <Activity size={12} />
@@ -315,20 +403,6 @@ function OracleCard({
                     </span>
                 )}
             </div>
-            <div className="predict-card-strike">
-                <span className="predict-card-label">Min strike</span>
-                <span className="predict-card-value">
-                    {formatStrikeUsd(oracle.min_strike)}
-                </span>
-            </div>
-            {oracle.settlement_price !== null && oracle.settlement_price !== undefined && (
-                <div className="predict-card-strike">
-                    <span className="predict-card-label">Settled at</span>
-                    <span className="predict-card-value">
-                        {formatStrikeUsd(oracle.settlement_price)}
-                    </span>
-                </div>
-            )}
-        </button>
+        </div>
     );
 }

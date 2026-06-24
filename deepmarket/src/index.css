@@ -4062,7 +4062,7 @@ html.has-horizontal-pin body, body { overflow-x: hidden; }
 }
 .predict-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
   gap: 12px;
 }
 .predict-card {
@@ -4125,6 +4125,90 @@ html.has-horizontal-pin body, body { overflow-x: hidden; }
   font-weight: 700;
   color: var(--text-primary);
   letter-spacing: 0.04em;
+}
+
+/* ── Prediction-market style card (Polymarket-familiar) ─────────────────── */
+.pm-card {
+  gap: 11px;
+  padding: 15px 16px 14px;
+}
+.pm-asset {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-family: 'Borna', sans-serif;
+  font-weight: 700;
+  font-size: 16px;
+}
+.pm-asset-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #f7931a; /* BTC */
+  box-shadow: 0 0 0 3px rgba(247, 147, 26, 0.16);
+}
+.pm-q {
+  font-family: 'Borna', sans-serif;
+  font-weight: 600;
+  font-size: 14px;
+  line-height: 1.35;
+  color: var(--text-primary);
+  min-height: 2.5em;
+}
+.pm-sides {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.pm-side {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 9px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-base);
+  background: var(--bg-card);
+}
+.pm-side.up { border-color: var(--yes-border); }
+.pm-side.down { border-color: var(--no-border); }
+.pm-side-bar {
+  position: absolute;
+  inset: 0 auto 0 0;
+  height: 100%;
+  transition: width 450ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.pm-side.up .pm-side-bar { background: var(--yes-dim); }
+.pm-side.down .pm-side-bar { background: var(--no-dim); }
+.pm-side-label {
+  position: relative;
+  font-family: 'Space Mono', monospace;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  font-size: 11px;
+}
+.pm-side.up .pm-side-label { color: var(--yes); }
+.pm-side.down .pm-side-label { color: var(--no); }
+.pm-side-pct {
+  position: relative;
+  font-family: 'Doto', monospace;
+  font-weight: 700;
+  font-size: 16px;
+  color: var(--text-primary);
+  letter-spacing: 0.04em;
+}
+.pm-foot {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  color: var(--text-secondary);
+}
+.pm-foot-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
 }
 .predict-empty {
   margin: 60px auto;
