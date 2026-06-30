@@ -12,7 +12,9 @@ serde_json = "1.0"
 # `rediss://` URLs from managed providers (Upstash, Redis Cloud, …) without a
 # system OpenSSL or system CA bundle — required in Render's slim Docker image.
 redis = { version = "0.25", features = ["tokio-comp", "tokio-rustls-comp", "tls-rustls-webpki-roots"] }
-sqlx = { version = "0.7", features = ["runtime-tokio", "postgres", "chrono"] }
+# tls-rustls lets sqlx connect over SSL — required by managed Postgres like
+# Neon (DATABASE_URL carries `?sslmode=require`). rustls = no system OpenSSL.
+sqlx = { version = "0.7", features = ["runtime-tokio", "tls-rustls", "postgres", "chrono"] }
 chrono = { version = "0.4", features = ["serde"] }
 sui-sdk = { git = "https://github.com/MystenLabs/sui.git", tag = "testnet-v1.67.2" }
 futures = "0.3"
